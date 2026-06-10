@@ -1,7 +1,7 @@
 # agentic-plugins
 
-A public [Claude Code](https://code.claude.com) plugin marketplace — installable skills, agents,
-and slash commands for AI coding agents.
+A public [Claude Code](https://code.claude.com) plugin marketplace — installable skills and agents
+for AI coding agents.
 
 ## Install
 

@@ -18,7 +18,6 @@ plugins/
     .mcp.json            # Bundled MCP servers (context7, deepwiki, brave, tavily, exa, you, awsknowledge)
     skills/              # Skill reference files (the core content)
     agents/              # Agent definitions (if present)
-    commands/            # Slash command orchestrators (if present)
   plugin-gardener/       # Catalog-hygiene plugin
     .claude-plugin/plugin.json
     skills/  references/  scripts/
@@ -102,5 +101,5 @@ mise run init:skill -- <plugin> <name> '<description>'
 1. Create `plugins/<plugin>/.claude-plugin/plugin.json` (`name`, `version`, `description`, `author`,
    `license`, `keywords`).
 2. Add a matching entry to `.claude-plugin/marketplace.json` with a local `"source": "./plugins/<plugin>"`.
-3. Add skills/agents/commands under the plugin directory.
+3. Add skills and agents under the plugin directory.
 4. `mise run build`.

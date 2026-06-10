@@ -4,7 +4,7 @@
     "name": "Laith Al-Saadoon"
   },
   "metadata": {
-    "description": "Public Claude Code plugin marketplace — skills, agents, and slash commands for AI coding agents.",
+    "description": "Public Claude Code plugin marketplace — skills and agents for AI coding agents.",
     "version": "0.2.0"
   },
   "plugins": [
