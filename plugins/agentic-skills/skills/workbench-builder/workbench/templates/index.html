@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>eval workbench</title>
-  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' rx='4' fill='%230a0b0f'/&gt;&lt;circle cx='8' cy='8' r='3' fill='%2338bdf8'/&gt;&lt;/svg&gt;">
+  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' rx='4' fill='%23e8edf1'/&gt;&lt;circle cx='8' cy='8' r='3' fill='%23274d7a'/&gt;&lt;/svg&gt;">
 
   <!-- All deps over CDN. No npm, no build step. Each is one <script> tag with
        a verified SRI hash. "Boring" means no toolchain — not no capability. -->
@@ -26,8 +26,8 @@
           integrity="sha384-C5g1ZoYBpnvKyArNZI21kaBEk3egHOYfHj/cUOHmyJ7CSDMyNMyM+STqfkBt8m2Y"
           crossorigin="anonymous"></script>
   <!-- GFM code-block highlighting: highlight.js + the marked-highlight bridge. -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/styles/github-dark.min.css"
-        integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH"
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/styles/github.min.css"
+        integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L"
         crossorigin="anonymous">
   <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/highlight.min.js"
           integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU"
@@ -42,32 +42,32 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --bg:        #0a0b0f;
-      --surface:   #13151c;
-      --surface-2: #191c25;
-      --border:    #262a35;
-      --border-hi: #343a48;
-      --ink:       #e7e9f0;
-      --muted:     #888fa3;
-      --faint:     #5a6072;
-      --pass:      #4ade80;
-      --fail:      #f97066;
-      --review:    #fbbf24;
-      --signal:    #38bdf8;
-      --grid-line: #1a1d26;
+      --bg:        #e8edf1;
+      --surface:   #fcfdfe;
+      --surface-2: #dadfe5;
+      --border:    #c7cfd7;
+      --border-hi: #a9b4bf;
+      --ink:       #0b0f14;
+      --muted:     #3b4753;
+      --faint:     #586471;
+      --pass:      #0a6961;
+      --fail:      #9a3b33;
+      --review:    #7a5512;
+      --signal:    #274d7a;
+      --grid-line: rgba(120,134,150,0.20);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
     body {
-      font: 14px/1.55 "IBM Plex Sans", system-ui, sans-serif;
+      font: 14px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(900px 500px at 88% -10%, #15233010 0%, transparent 60%),
-        radial-gradient(700px 400px at 0% 110%, #1a2a1810 0%, transparent 55%),
+        radial-gradient(900px 500px at 88% -10%, rgba(39,77,122,0.06) 0%, transparent 60%),
+        radial-gradient(700px 400px at 0% 110%, rgba(10,105,97,0.07) 0%, transparent 55%),
         var(--bg);
       background-image:
         linear-gradient(var(--grid-line) 1px, transparent 1px),
@@ -78,7 +78,7 @@
 
     /* ---- header ---------------------------------------------------------- */
     header.top { display: flex; align-items: baseline; gap: 16px; margin-bottom: 22px; }
-    h1 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800;
+    h1 { font-family: "Tiempos Headline", "Iowan Old Style", "Charter", Georgia, "Times New Roman", serif; font-weight: 500;
          font-size: 27px; letter-spacing: -0.02em; margin: 0; line-height: 1; }
     h1 .dot { color: var(--signal); }
     .tag { font-family: "JetBrains Mono", monospace; font-size: 11px;
@@ -103,9 +103,9 @@
                        transform: translate(-50%,-50%); color: var(--faint); font-size: 12px; pointer-events: none; }
     @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } .splitter { display: none; } }
 
-    .panel { background: linear-gradient(180deg, var(--surface) 0%, #11131a 100%);
+    .panel { background: linear-gradient(180deg, var(--surface) 0%, #f4f7fa 100%);
              border: 1px solid var(--border); border-radius: 12px;
-             box-shadow: 0 1px 0 #ffffff06 inset, 0 18px 40px -28px #000;
+             box-shadow: 0 1px 2px rgba(11,15,20,0.06), 0 12px 28px -22px rgba(11,15,20,0.30);
              overflow: hidden; margin-bottom: 18px; }
     .col-left .panel { margin-bottom: 0; }
     .panel > header { margin: 0; padding: 11px 15px; border-bottom: 1px solid var(--border);
@@ -137,7 +137,7 @@
                            vertical-align: top; min-width: 0; overflow-wrap: anywhere; }
     table.board tbody tr:last-child td { border-bottom: none; }
     table.board tbody tr { transition: background .15s; }
-    table.board tbody tr:hover { background: #ffffff04; }
+    table.board tbody tr:hover { background: rgba(39,77,122,0.05); }
 
     .case-name { font-weight: 600; font-size: 13.5px; }
     .case-in { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted);
@@ -151,9 +151,9 @@
             white-space: nowrap; }
     .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
                     background: currentColor; flex: 0 0 auto; }
-    .pill.pass         { color: var(--pass);   background: #4ade8016; border-color: #4ade8030; }
-    .pill.fail         { color: var(--fail);   background: #f9706616; border-color: #f9706630; }
-    .pill.needs-review { color: var(--review); background: #fbbf2416; border-color: #fbbf2430; }
+    .pill.pass         { color: var(--pass);   background: rgba(10,105,97,0.12);  border-color: rgba(10,105,97,0.30); }
+    .pill.fail         { color: var(--fail);   background: rgba(154,59,51,0.12);  border-color: rgba(154,59,51,0.30); }
+    .pill.needs-review { color: var(--review); background: rgba(122,85,18,0.12);  border-color: rgba(122,85,18,0.30); }
 
     .actions { display: flex; gap: 5px; margin-bottom: 7px; flex-wrap: wrap; }
     .btn { font-family: "JetBrains Mono", monospace; font-size: 10.5px; cursor: pointer;
@@ -164,22 +164,22 @@
     .btn[data-k="fail"]:hover   { color: var(--fail);   border-color: var(--fail); }
     .btn[data-k="review"]:hover { color: var(--review); border-color: var(--review); }
 
-    .note-in { width: 100%; font: 12px/1.4 "IBM Plex Sans", sans-serif; background: var(--bg); color: var(--ink);
+    .note-in { width: 100%; font: 12px/1.4 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; background: var(--surface); color: var(--ink);
                border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; }
-    .note-in:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 3px #38bdf820; }
+    .note-in:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 3px rgba(39,77,122,0.12); }
     .note-in::placeholder { color: var(--faint); }
 
     /* ---- markdown ------------------------------------------------------- */
     .md { font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
     .md p { margin: 3px 0; }
     .md code { font-family: "JetBrains Mono", monospace; font-size: 11px;
-               background: #ffffff0e; padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+               background: rgba(11,15,20,0.05); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
     .md ul, .md ol { margin: 3px 0; padding-left: 18px; }
     .md a { color: var(--signal); }
-    .md pre { background: #0d1117; border: 1px solid var(--border); border-radius: 7px;
+    .md pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
               padding: 9px 11px; margin: 6px 0; overflow-x: auto; }
     .md pre code { background: none; padding: 0; font-size: 11px; line-height: 1.5; }
-    .md pre.mermaid { background: #0d1117; text-align: center; }
+    .md pre.mermaid { background: var(--surface-2); text-align: center; }
     .md pre.mermaid svg { max-width: 100%; height: auto; }
     .md table { border-collapse: collapse; margin: 6px 0; font-size: 11.5px; width: 100%; }
     .md th, .md td { border: 1px solid var(--border); padding: 3px 8px; text-align: left; }
@@ -200,15 +200,15 @@
     .embed-chip .ec-go { margin-left: auto; color: var(--faint); font-size: 9px;
                          text-transform: uppercase; letter-spacing: 0.1em; }
     .embed-diagram { flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; width: 100%; }
-    .embed-diagram .ec-thumb { background: #0d1117; padding: 8px; max-height: 104px;
+    .embed-diagram .ec-thumb { background: var(--surface-2); padding: 8px; max-height: 104px;
                                overflow: hidden; display: flex; justify-content: center; align-items: center; }
     .embed-diagram .ec-thumb svg { max-width: 100%; max-height: 88px; height: auto; opacity: .92; }
     .embed-diagram .ec-bar { display: flex; align-items: center; gap: 7px;
                              padding: 6px 10px; border-top: 1px solid var(--border); }
 
     .cnote, .hnote { margin-top: 5px; padding: 5px 9px; border-radius: 7px; border-left: 2px solid; min-width: 0; }
-    .cnote { background: #38bdf80c; border-color: var(--signal); }
-    .hnote { background: #4ade800c; border-color: var(--pass); }
+    .cnote { background: rgba(39,77,122,0.12); border-color: var(--signal); }
+    .hnote { background: rgba(10,105,97,0.12); border-color: var(--pass); }
     .cnote .who, .hnote .who { font-family: "JetBrains Mono", monospace; font-size: 9px;
                                text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 1px;
                                display: flex; align-items: center; gap: 6px; }
@@ -238,7 +238,7 @@
           border-bottom: 1px solid var(--grid-line); cursor: pointer; transition: background .12s;
           border-radius: 6px; }
     .ev:last-child { border-bottom: none; }
-    .ev:hover { background: #ffffff05; }
+    .ev:hover { background: rgba(11,15,20,0.04); }
     .ev .src { font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700;
                text-transform: uppercase; letter-spacing: 0.08em; padding-top: 2px; }
     .ev .src.human  { color: var(--pass); }
@@ -251,7 +251,7 @@
     /* ---- overlays: modal (centered artifact) + sheet (right disclosure) -- */
     .ov { position: fixed; inset: 0; display: none; }
     .ov.open { display: block; }
-    .ov-scrim { position: absolute; inset: 0; background: #05060ac9; backdrop-filter: blur(5px); }
+    .ov-scrim { position: absolute; inset: 0; background: rgba(11,15,20,0.28); backdrop-filter: blur(5px); }
     .ov-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px;
                padding: 11px 15px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
     .ov-title { font-family: "JetBrains Mono", monospace; font-size: 10.5px; text-transform: uppercase;
@@ -266,7 +266,7 @@
     #modal { z-index: 70; }
     #modal .ov-card { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(.96);
                       background: var(--surface); border: 1px solid var(--border-hi); border-radius: 16px;
-                      max-width: 92vw; max-height: 90vh; overflow: auto; box-shadow: 0 40px 100px -24px #000;
+                      max-width: 92vw; max-height: 90vh; overflow: auto; box-shadow: 0 40px 100px -24px rgba(11,15,20,0.30);
                       opacity: 0; transition: opacity .18s, transform .18s; }
     #modal.open .ov-card { opacity: 1; transform: translate(-50%,-50%) scale(1); }
     #modal .ov-body { display: grid; place-items: center; }
@@ -275,7 +275,7 @@
     #sheet { z-index: 62; }
     #sheet .ov-card { position: absolute; top: 0; right: 0; height: 100%; width: min(480px, 94vw);
                       background: var(--surface); border-left: 1px solid var(--border-hi);
-                      box-shadow: -30px 0 80px -30px #000; overflow: auto;
+                      box-shadow: -30px 0 80px -30px rgba(11,15,20,0.28); overflow: auto;
                       transform: translateX(100%); transition: transform .26s cubic-bezier(.4,0,.2,1); }
     #sheet.open .ov-card { transform: translateX(0); }
     #sheet .ov-body .md { font-size: 13px; }
@@ -352,10 +352,10 @@
   <script>
     // ---- markdown engine: marked (GFM) + highlight.js + mermaid + DOMPurify
     mermaid.initialize({
-      startOnLoad: false, theme: 'dark', securityLevel: 'strict',
+      startOnLoad: false, theme: 'base', securityLevel: 'strict',
       themeVariables: { fontFamily: 'JetBrains Mono, monospace', fontSize: '12px',
-                        primaryColor: '#191c25', primaryBorderColor: '#38bdf8',
-                        lineColor: '#5a6072', primaryTextColor: '#e7e9f0' },
+                        primaryColor: '#dadfe5', primaryBorderColor: '#274d7a',
+                        lineColor: '#586471', primaryTextColor: '#0b0f14' },
     });
     marked.use(markedHighlight.markedHighlight({
       langPrefix: 'hljs language-',
@@ -471,11 +471,11 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOverlays(); });
 
     // ---- Chart.js: stacked-area history + doughnut split (tooltips built-in)
-    Chart.defaults.color = '#888fa3';
+    Chart.defaults.color = '#586471';
     Chart.defaults.font.family = 'JetBrains Mono, monospace';
     Chart.defaults.font.size = 10;
-    const C = { pass: '#4ade80', fail: '#f97066', review: '#fbbf24' };
-    const fill = a => ({ pass: `rgba(74,222,128,${a})`, fail: `rgba(249,112,102,${a})`, review: `rgba(251,191,36,${a})` });
+    const C = { pass: '#0a6961', fail: '#9a3b33', review: '#7a5512' };
+    const fill = a => ({ pass: `rgba(10,105,97,${a})`, fail: `rgba(154,59,51,${a})`, review: `rgba(122,85,18,${a})` });
     let historyChart, splitChart;
 
     async function renderChart() {
@@ -490,10 +490,11 @@
           type: 'line', data: { labels, datasets: [ds('pass'), ds('fail'), ds('review')] },
           options: { responsive: true, maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
-            scales: { x: { grid: { color: '#1a1d26' }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
-                      y: { stacked: true, beginAtZero: true, grid: { color: '#1a1d26' }, ticks: { precision: 0 } } },
+            scales: { x: { grid: { color: 'rgba(120,134,150,0.20)' }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+                      y: { stacked: true, beginAtZero: true, grid: { color: 'rgba(120,134,150,0.20)' }, ticks: { precision: 0 } } },
             plugins: { legend: { display: false },
-              tooltip: { backgroundColor: '#13151c', borderColor: '#262a35', borderWidth: 1, cornerRadius: 8,
+              tooltip: { backgroundColor: '#fcfdfe', titleColor: '#0b0f14', bodyColor: '#1c232b', footerColor: '#3b4753',
+                         borderColor: '#c7cfd7', borderWidth: 1, cornerRadius: 8,
                          padding: 9, usePointStyle: true,
                          callbacks: { footer: items => 'total ' + items.reduce((s, i) => s + i.parsed.y, 0) } } } },
         });
@@ -507,10 +508,11 @@
           type: 'doughnut',
           data: { labels: ['pass', 'fail', 'review'],
                   datasets: [{ data: split, backgroundColor: [C.pass, C.fail, C.review],
-                               borderColor: '#13151c', borderWidth: 2, hoverOffset: 6 }] },
+                               borderColor: '#fcfdfe', borderWidth: 2, hoverOffset: 6 }] },
           options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
             plugins: { legend: { display: false },
-              tooltip: { backgroundColor: '#13151c', borderColor: '#262a35', borderWidth: 1, cornerRadius: 8,
+              tooltip: { backgroundColor: '#fcfdfe', titleColor: '#0b0f14', bodyColor: '#1c232b',
+                         borderColor: '#c7cfd7', borderWidth: 1, cornerRadius: 8,
                          padding: 8, callbacks: { label: c => `${c.label}: ${c.parsed}` } } } },
         });
       } else { splitChart.data.datasets[0].data = split; splitChart.update(); }
