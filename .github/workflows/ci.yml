@@ -18,6 +18,11 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          # Validators are PEP 723 inline-dependency scripts run via `uv run` —
+          # there is no uv.lock/requirements.txt, so a package cache never
+          # resolves a key. Disable it to skip a perpetual no-op cache warning.
+          enable-cache: false
 
       - name: Install mise and tools
         uses: jdx/mise-action@v2
