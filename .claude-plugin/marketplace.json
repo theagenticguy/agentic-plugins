@@ -1,0 +1,84 @@
+{
+  "name": "agentic-plugins",
+  "owner": {
+    "name": "Laith Al-Saadoon"
+  },
+  "metadata": {
+    "description": "Public Claude Code plugin marketplace — skills, agents, and slash commands for AI coding agents.",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "agentic-skills",
+      "source": "./plugins/agentic-skills",
+      "description": "Flagship skills for AI coding agents. Includes workbench-builder: disposable localhost Flask + sqlite3 + htmx + SSE workbenches with a two-way human↔agent loop — eval viewers, PR review rooms, document-redline surfaces, trace replays, and refactor cockpits, with no build step or deploy.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Laith Al-Saadoon"
+      },
+      "license": "MIT",
+      "category": "developer-tools",
+      "strict": false,
+      "tags": [
+        "claude-code",
+        "agent-skills",
+        "ai-agents",
+        "workbench",
+        "localhost",
+        "flask",
+        "htmx",
+        "sse",
+        "sqlite",
+        "eval-viewer",
+        "pr-review",
+        "human-in-the-loop"
+      ],
+      "keywords": [
+        "claude-code",
+        "agent-skills",
+        "ai-agents",
+        "workbench",
+        "localhost",
+        "flask",
+        "htmx",
+        "sse",
+        "server-sent-events",
+        "sqlite",
+        "eval-viewer",
+        "pr-review",
+        "human-in-the-loop",
+        "developer-tools"
+      ]
+    },
+    {
+      "name": "plugin-gardener",
+      "source": "./plugins/plugin-gardener",
+      "description": "Catalog hygiene for Claude Code skill/agent plugins. Runs audits: inventory, per-skill scoring, embedding-based collision detection, and HDBSCAN taxonomy checks. Proposes PR-style resolutions without auto-applying.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Laith Al-Saadoon"
+      },
+      "license": "MIT",
+      "category": "developer-tools",
+      "strict": false,
+      "tags": [
+        "claude-code",
+        "plugin-hygiene",
+        "skill-catalog",
+        "collision-detection",
+        "embeddings",
+        "audit"
+      ],
+      "keywords": [
+        "plugin-hygiene",
+        "skill-catalog",
+        "collision-detection",
+        "embeddings",
+        "bedrock",
+        "cohere",
+        "hdbscan",
+        "audit"
+      ]
+    }
+  ]
+}

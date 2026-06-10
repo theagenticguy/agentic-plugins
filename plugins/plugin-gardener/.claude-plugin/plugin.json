@@ -1,0 +1,19 @@
+{
+  "name": "plugin-gardener",
+  "version": "0.2.0",
+  "description": "Catalog hygiene for Claude Code skill/agent plugins. Runs monthly audits: inventory, per-skill scoring, Bedrock Cohere v4 embedding-based collision detection, and HDBSCAN taxonomy checks. Proposes PR-style resolutions without auto-applying.",
+  "author": {
+    "name": "Laith Al-Saadoon"
+  },
+  "license": "MIT",
+  "keywords": [
+    "plugin-hygiene",
+    "skill-catalog",
+    "collision-detection",
+    "embeddings",
+    "bedrock",
+    "cohere",
+    "hdbscan",
+    "audit"
+  ]
+}

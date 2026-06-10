@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.DS_Store
+.claude/
+__pycache__/
+.venv/
+# plugin-gardener audit run artifacts (regenerated each run)
+plugins/plugin-gardener/audit/**/*.npz
+plugins/plugin-gardener/audit/**/*.csv
+plugins/plugin-gardener/audit/**/clusters-raw.txt
+plugins/plugin-gardener/audit/**/scoring-contexts.json

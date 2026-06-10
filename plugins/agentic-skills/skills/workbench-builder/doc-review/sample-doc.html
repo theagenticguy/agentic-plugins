@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+  Sample document for the doc-review workbench. Point the app at your own file
+  with REVIEW_DOC=/path/to/doc.html; this ships so the recipe runs with zero
+  args. The parser pulls reviewable text out of h1/h2/h3/p/li/blockquote/cite/
+  td/th/caption blocks, so any document built from those tags works.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Sample document under review</title></head>
+<body>
+  <h1>Sample document under review</h1>
+  <p>This is a placeholder document so the doc-review workbench boots with no
+    arguments. Select any run of text in this paragraph and a small toolbar
+    appears: leave a comment, or a redline with a suggested replacement.</p>
+
+  <h2>How the loop works</h2>
+  <p>Your annotation is stored against the exact characters you highlighted. The
+    agent reads it from the terminal with <code>scripts/review.py list</code>,
+    edits the real source document, then resolves the note &mdash; and this page
+    updates live, with the card turning green and the agent's reply attached.</p>
+  <ul>
+    <li>A comment is a question or a note on the selected span.</li>
+    <li>A redline carries a proposed replacement for the span.</li>
+    <li>Entities like &mdash; and &amp; and &rarr; anchor correctly &mdash; the
+      highlight lands on exactly what you selected.</li>
+  </ul>
+
+  <blockquote>Replace this document with your own by setting REVIEW_DOC.</blockquote>
+  <p><cite>&mdash; the workbench</cite></p>
+</body>
+</html>

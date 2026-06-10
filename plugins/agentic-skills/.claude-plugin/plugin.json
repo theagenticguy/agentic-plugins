@@ -1,0 +1,25 @@
+{
+  "name": "agentic-skills",
+  "version": "0.1.0",
+  "description": "Flagship skills for AI coding agents. Includes workbench-builder: disposable localhost Flask + sqlite3 + htmx + SSE workbenches with a two-way human↔agent loop — eval viewers, PR review rooms, document-redline surfaces, trace replays, and refactor cockpits, with no build step or deploy.",
+  "author": {
+    "name": "Laith Al-Saadoon"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "agent-skills",
+    "ai-agents",
+    "workbench",
+    "localhost",
+    "flask",
+    "htmx",
+    "sse",
+    "server-sent-events",
+    "sqlite",
+    "eval-viewer",
+    "pr-review",
+    "human-in-the-loop",
+    "developer-tools"
+  ]
+}
