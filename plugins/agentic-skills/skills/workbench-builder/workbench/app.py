@@ -108,14 +108,16 @@ def db() -> sqlite3.Connection:
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
-        # WAL + busy_timeout: two writers — the human's htmx thread and the
-        # agent's terminal thread — hit one SQLite file under threaded=True.
-        # WAL lets readers and the writer proceed concurrently; busy_timeout
-        # makes a contended write wait briefly instead of raising "database is
-        # locked".
-        g.db.execute("PRAGMA journal_mode = WAL")
+        # busy_timeout FIRST: every later statement on this connection then
+        # waits on a contended lock instead of failing immediately. Two writers
+        # (the human's htmx thread + the agent's terminal thread) share one
+        # SQLite file under threaded=True; WAL (set once in init_db) lets a
+        # reader and the writer proceed concurrently, and this timeout absorbs
+        # the brief writer-writer contention. Order matters — setting WAL or
+        # any write here BEFORE the timeout is what caused "database is locked"
+        # under concurrent first-load requests.
         g.db.execute("PRAGMA busy_timeout = 5000")
+        g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -136,6 +138,11 @@ def log_event(source: str, message: str) -> None:
 
 def init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
+    # Set WAL once, at startup, on this single connection. WAL is a persistent
+    # property of the database file, so it does NOT need to be re-set on every
+    # per-request connection (doing that raced under concurrent first-load
+    # requests and raised "database is locked").
+    conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
     # Seed a few cases only if the table is empty, so reruns don't duplicate.
     count = conn.execute("SELECT COUNT(*) FROM evals").fetchone()[0]
