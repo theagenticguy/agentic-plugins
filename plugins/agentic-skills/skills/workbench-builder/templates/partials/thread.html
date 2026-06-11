@@ -1,0 +1,48 @@
+{#
+  One item's human↔agent conversation (/partials/thread/<id>, sse:thread-<id>).
+  app.py hands this `reqs` (all requests for the item, newest first) and the
+  `item_id`. Each request is the human's body; once the terminal answers it the
+  status flips to 'answered' and a response appears.
+
+  The ask form posts to /items/{{ item_id }}/ask and targets this same thread
+  container so a new ask swaps in place. Bodies/responses are markdown, emitted
+  raw inside <div class="md"> for the page's renderMarkdown() to hydrate.
+#}
+{% set tone = {'queued': 'warn', 'working': 'bad', 'answered': 'ok'} %}
+<div id="thread-{{ item_id }}">
+  {% if not reqs %}
+    <p class="empty">No asks yet. Hand the agent a task below.</p>
+  {% endif %}
+
+  {% for r in reqs %}
+    <div style="margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+        <span class="pill {{ tone.get(r.status, 'warn') }}">{{ r.status }}</span>
+        <span class="tag">{{ r.kind }}</span>
+        <span class="tag" style="margin-left:auto;">{{ r.created_at }}</span>
+      </div>
+      <div class="md">{{ r.body }}</div>
+      {% if r.response %}
+        <div class="md" style="margin-top:6px; border-left:2px solid var(--signal); padding-left:9px;">
+          {{ r.response }}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  {# Steer the agent on this item. A blank body falls back to a per-kind default
+     server-side, so the kind buttons act as one-click asks. #}
+  <form hx-post="/items/{{ item_id }}/ask"
+        hx-target="#thread-{{ item_id }}" hx-swap="outerHTML"
+        hx-on::after-request="this.reset()"
+        style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+    <input class="field" name="body" autocomplete="off"
+           placeholder="ask the agent about this item&hellip;" style="flex:1; min-width:140px;">
+    <select class="field" name="kind" style="width:auto;">
+      <option value="ask">ask</option>
+      <option value="investigate">investigate</option>
+      <option value="summarize">summarize</option>
+    </select>
+    <button class="btn" type="submit">send</button>
+  </form>
+</div>

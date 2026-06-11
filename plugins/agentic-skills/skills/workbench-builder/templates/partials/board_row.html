@@ -1,0 +1,57 @@
+{#
+  One item card. STANDS ALONE: board.html includes it for each row, AND the
+  /items/<id>/status and /items/<id>/note POST handlers return it on its own to
+  swap a single row in place.
+
+  Swap convention: the card's outer id is #item-{{ i.id }}. Every form inside it
+  posts with hx-target="#item-{{ i.id }}" hx-swap="outerHTML", so the server's
+  single-row response replaces exactly this card. (The board-wide sse:board
+  event still redraws the whole list in other tabs.)
+
+  Markdown is NOT rendered here — i.detail / agent_note are emitted raw inside a
+  <div class="md">; the page's renderMarkdown() hydrates them on htmx:afterSwap.
+#}
+{% set tone = {'new': 'warn', 'working': 'bad', 'done': 'ok'} %}
+<div class="panel" id="item-{{ i.id }}">
+  <header>
+    <span class="lbl">item {{ i.id }}</span>
+    <span class="pill {{ tone.get(i.status, 'warn') }}">{{ i.status }}</span>
+    <span class="tag" style="margin-left:auto;">{{ i.updated_at }}</span>
+  </header>
+  <div class="body">
+    <div style="font-weight:600; margin-bottom:6px;">{{ i.title }}</div>
+
+    {% if i.detail %}
+      <div class="md">{{ i.detail }}</div>
+    {% endif %}
+
+    {% if i.agent_note %}
+      <div class="md" style="margin-top:8px; border-left:2px solid var(--signal); padding-left:9px;">
+        {{ i.agent_note }}
+      </div>
+    {% endif %}
+
+    {# Status change — three one-click buttons; the current status is disabled. #}
+    <div style="display:flex; gap:6px; margin-top:10px;">
+      {% for st in ['new', 'working', 'done'] %}
+        <form hx-post="/items/{{ i.id }}/status"
+              hx-target="#item-{{ i.id }}" hx-swap="outerHTML"
+              style="display:inline;">
+          <input type="hidden" name="status" value="{{ st }}">
+          <button class="btn" type="submit"
+                  {% if i.status == st %}disabled{% endif %}>{{ st }}</button>
+        </form>
+      {% endfor %}
+    </div>
+
+    {# Human note — a free-text jot the human leaves on the row. #}
+    <form hx-post="/items/{{ i.id }}/note"
+          hx-target="#item-{{ i.id }}" hx-swap="outerHTML"
+          style="display:flex; gap:6px; margin-top:8px;">
+      <input class="field" name="human_note" autocomplete="off"
+             placeholder="leave a note&hellip;"
+             value="{{ i.human_note or '' }}">
+      <button class="btn" type="submit">save</button>
+    </form>
+  </div>
+</div>

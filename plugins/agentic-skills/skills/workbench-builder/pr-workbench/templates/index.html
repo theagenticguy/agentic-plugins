@@ -19,7 +19,7 @@
           integrity="sha384-C5g1ZoYBpnvKyArNZI21kaBEk3egHOYfHj/cUOHmyJ7CSDMyNMyM+STqfkBt8m2Y"
           crossorigin="anonymous"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/styles/github.min.css"
-        integrity="sha384-FRdpEMjT/g4OYjBudm/F26GIfwz/Bd1aMArBYRkmHQTU+Z0Wd5Bn/cYDfNX/M2bd"
+        integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L"
         crossorigin="anonymous">
   <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/highlight.min.js"
           integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU"
@@ -51,8 +51,10 @@
       --low:       #0a6961;   /* low / safe — teal */
       --add:       #1f7a43;   /* diff add — muted green, keeps additions legible vs --low teal */
       --del:       #9a3b33;   /* diff del — redline red */
+      --strip-h:   78px;      /* rendered height of sticky .strip — couples .rail top to one source */
     }
     * { box-sizing: border-box; }
+    :focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
     html, body { margin: 0; min-height: 100%; }
     body {
       font: 14px/1.5 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; color: var(--ink);
@@ -68,8 +70,8 @@
     ::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 
     /* ---- top command strip ---------------------------------------------- */
-    .strip { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 22px;
-             padding: 14px 24px; background: rgba(218,223,229,0.90); backdrop-filter: blur(10px);
+    .strip { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 22px;
+             row-gap: 12px; padding: 14px 24px; background: rgba(218,223,229,0.90); backdrop-filter: blur(10px);
              border-bottom: 1px solid var(--line); }
     .brand { font-family: "Tiempos Headline", "Iowan Old Style", "Charter", Georgia, "Times New Roman", serif; font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
     .brand .b { color: var(--violet); }
@@ -134,7 +136,7 @@
 
     /* ---- collision rail -------------------------------------------------- */
     .rail { background: linear-gradient(180deg, var(--panel), #f4f7fa); border: 1px solid var(--line);
-            border-radius: 13px; padding: 15px; position: sticky; top: 78px; }
+            border-radius: 13px; padding: 15px; position: sticky; top: var(--strip-h); }
     .col-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
     .col-item:last-child { border-bottom: none; }
     .col-path { font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--ink);
@@ -341,7 +343,14 @@
       if (card) { openPR(card.dataset.pr); return; }
       if (e.target.closest('[data-close]')) closeSheet();
     });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeSheet(); return; }
+      // keyboard a11y: Enter/Space on a focused PR card opens it, same as click
+      if (e.key === 'Enter' || e.key === ' ') {
+        const card = e.target.closest('[data-pr]');
+        if (card) { e.preventDefault(); openPR(card.dataset.pr); }
+      }
+    });
 
     // live indicator + re-render markdown after any swap
     const live = document.getElementById('live'), liveTxt = document.getElementById('live-txt');

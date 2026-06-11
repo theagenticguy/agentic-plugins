@@ -61,6 +61,7 @@
       --grid-line: rgba(120,134,150,0.20);
     }
     * { box-sizing: border-box; }
+    :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
     html, body { margin: 0; height: 100%; }
     body {
       font: 14px/1.55 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
@@ -68,11 +69,11 @@
       background:
         radial-gradient(900px 500px at 88% -10%, rgba(39,77,122,0.06) 0%, transparent 60%),
         radial-gradient(700px 400px at 0% 110%, rgba(10,105,97,0.07) 0%, transparent 55%),
-        var(--bg);
-      background-image:
         linear-gradient(var(--grid-line) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-      background-size: 100% 100%, 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+        var(--bg);
+      background-size: auto, auto, 32px 32px, 32px 32px;
+      background-attachment: fixed;
       padding: 22px 26px 40px;
     }
 
@@ -165,7 +166,10 @@
     .btn[data-k="review"]:hover { color: var(--review); border-color: var(--review); }
 
     .note-in { width: 100%; font: 12px/1.4 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; background: var(--surface); color: var(--ink);
-               border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; }
+               border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px;
+               opacity: 0; transition: opacity .12s; }
+    /* always-on note inputs are clutter; reveal on row hover or while focused/typing */
+    tr:hover .note-in, tr:focus-within .note-in { opacity: 1; }
     .note-in:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 3px rgba(39,77,122,0.12); }
     .note-in::placeholder { color: var(--faint); }
 
@@ -394,6 +398,11 @@
         const rows = Math.max(0, t.rows.length - 1), cols = t.rows[0]?.cells.length || 0;
         t.replaceWith(tableChip(t.cloneNode(true), rows, cols));
       });
+      // long code blocks (>4 lines) -> chip; short ones stay inline
+      node.querySelectorAll('pre:not(.mermaid)').forEach(p => {
+        const lines = (p.textContent.replace(/\n$/, '').match(/\n/g) || []).length + 1;
+        if (lines > 4) p.replaceWith(codeChip(p.cloneNode(true), lines));
+      });
       // diagrams -> thumbnail chip
       node.querySelectorAll('pre.mermaid').forEach(d => d.replaceWith(diagramChip(d)));
     }
@@ -404,6 +413,14 @@
       b.className = 'embed-chip'; b.dataset.embed = id; b.dataset.title = `table · ${rows}×${cols}`;
       b.innerHTML = `<span class="ec-ic">▦</span><span>table</span>` +
                     `<span class="ec-dim">${rows}×${cols}</span><span class="ec-go">open ⤢</span>`;
+      return b;
+    }
+    function codeChip(full, lines) {
+      const id = 'e' + (embedSeq++); embeds.set(id, full);
+      const b = document.createElement('button');
+      b.className = 'embed-chip'; b.dataset.embed = id; b.dataset.title = `code · ${lines} lines`;
+      b.innerHTML = `<span class="ec-ic">❯</span><span>code</span>` +
+                    `<span class="ec-dim">${lines} lines</span><span class="ec-go">open ⤢</span>`;
       return b;
     }
     function diagramChip(pre) {
@@ -454,6 +471,14 @@
       document.getElementById('sheet').classList.remove('open');
     }
 
+    // Open the detail sheet for an event-log .ev row (shared by click + keyboard).
+    function openEvSheet(row) {
+      const md = row.querySelector('.md');
+      const who = row.querySelector('.src')?.textContent.trim() || 'event';
+      const t = row.querySelector('.t')?.textContent.trim() || '';
+      if (md) openSheet(`${who} · ${t}`, mdSrc.get(md) ?? md.textContent);
+    }
+
     document.addEventListener('click', (e) => {
       const chip = e.target.closest('.embed-chip');
       if (chip) { const n = embeds.get(chip.dataset.embed);
@@ -462,13 +487,17 @@
       if (exp) { const md = exp.closest('.cnote, .hnote')?.querySelector('.md');
                  if (md) openSheet(exp.dataset.title || 'note', mdSrc.get(md) ?? md.textContent); return; }
       const row = e.target.closest('.ev');
-      if (row) { const md = row.querySelector('.md');
-                 const who = row.querySelector('.src')?.textContent.trim() || 'event';
-                 const t = row.querySelector('.t')?.textContent.trim() || '';
-                 if (md) openSheet(`${who} · ${t}`, mdSrc.get(md) ?? md.textContent); return; }
+      if (row) { openEvSheet(row); return; }
       if (e.target.closest('[data-close]')) closeOverlays();
     });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOverlays(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeOverlays(); return; }
+      // Enter/Space on a focused .ev row opens its detail sheet (keyboard parity with click).
+      if (e.key === 'Enter' || e.key === ' ') {
+        const row = e.target.closest?.('.ev');
+        if (row) { e.preventDefault(); openEvSheet(row); }
+      }
+    });
 
     // ---- Chart.js: stacked-area history + doughnut split (tooltips built-in)
     Chart.defaults.color = '#586471';
@@ -546,12 +575,15 @@
     const live = document.getElementById('live'), liveTxt = document.getElementById('live-txt');
     document.body.addEventListener('htmx:sseOpen',  () => { live.className = 'live on';  liveTxt.textContent = 'live'; });
     document.body.addEventListener('htmx:sseError', () => { live.className = 'live err'; liveTxt.textContent = 'reconnecting…'; });
+    // renderChart() reads the doughnut's pass/fail/review split from the live
+    // .stat .n tiles, so it must run AFTER #run-summary swaps in — not bare at
+    // script-end (which raced first paint and drew an all-zero doughnut). The
+    // history chart fetches /data/run-history itself inside renderChart(), and
+    // #run-summary's hx-trigger="load" guarantees this fires on initial load.
     document.body.addEventListener('htmx:afterSwap', (e) => {
       renderMarkdown(e.target);
       if (e.target.id === 'run-summary') renderChart();
     });
-
-    renderChart();
   </script>
 </body>
 </html>

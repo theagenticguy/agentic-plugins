@@ -1,0 +1,45 @@
+{#
+  The fleet board — every PR in the change-set as a card. Sorted high→low risk
+  then by churn (server-side, see fleet_rows()). Each card opens the detail
+  sheet: index.html's global click listener catches [data-pr] and calls
+  openPR(card.dataset.pr). The churn bar is scaled against `maxchurn` (the
+  busiest PR fills the bar). "ask claude" status badges flip live via SSE.
+#}
+{% if not prs %}
+  <p class="empty">No PRs yet. Claude Code ingests them via <b>POST /pr/ingest</b>.</p>
+{% endif %}
+
+{% for pr in prs %}
+  {% set churn = pr.additions + pr.deletions %}
+  {% set pct = (churn * 100 / maxchurn) if maxchurn else 0 %}
+  {% set adds_pct = (pr.additions * 100 / churn) if churn else 0 %}
+  <div class="pr risk-{{ pr.risk }}" data-pr="{{ pr.id }}" role="button" tabindex="0">
+    <div class="pr-top">
+      <span class="pr-num">#{{ pr.number }}</span>
+      <span class="pr-state {{ pr.state }}">{{ pr.state }}</span>
+      <span class="pr-risk {{ pr.risk }}">{{ pr.risk }} risk</span>
+    </div>
+
+    <p class="pr-title">{{ pr.title }}</p>
+
+    <div class="pr-meta">
+      <span class="author">{{ pr.author }}</span>
+      <span class="branch">{{ pr.branch }}</span>
+    </div>
+
+    <div class="churn" title="+{{ pr.additions }} / -{{ pr.deletions }}" style="width: {{ pct }}%; min-width: 24px;">
+      <span class="a" style="width: {{ adds_pct }}%"></span>
+      <span class="d" style="width: {{ 100 - adds_pct }}%"></span>
+    </div>
+
+    <div class="pr-foot">
+      <span class="badge files">{{ pr.n_files }} file{{ '' if pr.n_files == 1 else 's' }}</span>
+      {% if pr.n_block %}<span class="badge block">{{ pr.n_block }} blocker{{ '' if pr.n_block == 1 else 's' }}</span>{% endif %}
+      {% if pr.n_warn %}<span class="badge warn">{{ pr.n_warn }} warn</span>{% endif %}
+      {% if pr.n_nit %}<span class="badge nit">{{ pr.n_nit }} nit</span>{% endif %}
+      {% if pr.n_working %}<span class="badge working">claude working</span>{% endif %}
+      {% if pr.n_queued %}<span class="badge queued">{{ pr.n_queued }} queued</span>{% endif %}
+      {% if pr.n_answered %}<span class="badge answered">{{ pr.n_answered }} answered</span>{% endif %}
+    </div>
+  </div>
+{% endfor %}

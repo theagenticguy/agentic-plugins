@@ -232,7 +232,7 @@
   <!-- compose popover -->
   <div id="compose">
     <form id="compose-form" hx-post="/annotate" hx-target="#annotations" hx-swap="innerHTML"
-          hx-on::after-request="closeCompose()">
+          hx-on::after-request="if (event.detail.successful) closeCompose()">
       <div class="c-head"><span class="dot"></span><span id="c-kind-label">comment</span></div>
       <div class="c-sel">
         <div class="c-sel-lbl"><span>selected text</span><span id="c-range"></span></div>

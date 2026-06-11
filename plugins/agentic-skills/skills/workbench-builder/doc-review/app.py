@@ -67,15 +67,18 @@ _subs_lock = threading.Lock()
 
 def publish(*targets: str) -> None:
     with _subs_lock:
-        dead = []
         for q in _subs:
             for t in targets:
                 try:
                     q.put_nowait(t)
                 except queue.Full:
-                    dead.append(q)
-        for q in dead:
-            _subs.discard(q)
+                    # Drop this stale-region ping. Events are idempotent ("this
+                    # region is dirty, re-GET it"), so a full queue just means
+                    # the browser hasn't drained yet. Evicting the subscriber
+                    # would zombie a live tab — its SSE generator keeps emitting
+                    # keep-alives but the tab never updates again. Dropping is
+                    # safe.
+                    pass
 
 
 def now() -> str:
@@ -161,6 +164,13 @@ def db() -> sqlite3.Connection:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
+        # WAL + busy_timeout: two writers — the human's htmx thread and the
+        # agent's terminal thread — hit one SQLite file under threaded=True.
+        # WAL lets readers and the writer proceed concurrently; busy_timeout
+        # makes a contended write wait briefly instead of raising "database is
+        # locked".
+        g.db.execute("PRAGMA journal_mode = WAL")
+        g.db.execute("PRAGMA busy_timeout = 5000")
     return g.db
 
 

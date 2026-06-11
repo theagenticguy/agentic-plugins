@@ -1,0 +1,14 @@
+{#
+  The summary region (/partials/summary, sse:summary). One aggregate row from
+  app.py: s.n_new, s.n_working, s.n_done, s.total. Rendered as labeled stat
+  pills so the counts re-render live whenever the board changes.
+
+  SUM(status=...) returns NULL when there are zero rows, so each count is
+  guarded with `or 0`.
+#}
+<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+  <span class="pill warn">new {{ s.n_new or 0 }}</span>
+  <span class="pill bad">working {{ s.n_working or 0 }}</span>
+  <span class="pill ok">done {{ s.n_done or 0 }}</span>
+  <span class="tag" style="margin-left:auto;">{{ s.total or 0 }} total</span>
+</div>

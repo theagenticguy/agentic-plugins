@@ -1,0 +1,31 @@
+{#
+  File-collision rail — the merge-order risk map. `cols` is collisions(): one
+  group per file touched by >1 PR, each with {path, n, churn, prs} where every
+  prs entry is {number, risk, state}. Chips open the colliding PR's detail
+  sheet via [data-pr] (index.html click listener). Risk-high collisions wear
+  the .risk-high chip border. Empty-state when nothing overlaps.
+
+  NOTE: collisions() returns the PR `number`, not its row id, so chips here key
+  off `data-prnum`; the global click listener only opens on [data-pr] (id), so
+  these chips highlight the hot file rather than deep-linking. The fleet card
+  remains the path into detail.
+#}
+<p class="zone-label">{{ cols|length }} hot file{{ '' if cols|length == 1 else 's' }}</p>
+
+{% if not cols %}
+  <p class="empty">No file collisions. Every PR touches a disjoint set of files — merge order is free.</p>
+{% endif %}
+
+{% for c in cols %}
+  <div class="collide col-item">
+    <div class="col-path">
+      <span>{{ c.path }}</span>
+      <span class="heat">{{ c.n }} PRs · {{ c.churn }} ∆</span>
+    </div>
+    <div class="col-prs">
+      {% for p in c.prs %}
+        <span class="col-chip risk-{{ p.risk }}" data-prnum="{{ p.number }}" title="{{ p.state }} · {{ p.risk }} risk">#{{ p.number }}</span>
+      {% endfor %}
+    </div>
+  </div>
+{% endfor %}

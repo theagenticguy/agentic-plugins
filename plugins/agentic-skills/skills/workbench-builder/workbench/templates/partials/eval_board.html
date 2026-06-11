@@ -1,0 +1,40 @@
+{#
+  The eval board: a filter strip + the cases table. Swapped wholesale into
+  #eval-board on load and on sse:eval-board. The filter chips hx-GET
+  /partials/eval-board?status=… back into #eval-board. Each case is rendered
+  through eval_row.html (var: e) so a single-row POST swap reuses the same markup.
+
+  Column widths come from index.html's `table.board col.c-*` rules — the
+  <colgroup> classes below must match those (case / exp / act / st / rev).
+#}
+<div class="filters">
+  {% for f in ['all', 'pass', 'fail', 'needs-review'] %}
+    <button class="chip{% if status_filter == f %} active{% endif %}"
+            hx-get="/partials/eval-board{% if f != 'all' %}?status={{ f }}{% endif %}"
+            hx-target="#eval-board" hx-swap="innerHTML">{{ f }}</button>
+  {% endfor %}
+</div>
+
+{% if not evals %}
+  <div class="body">
+    <p class="empty">No eval cases{% if status_filter and status_filter != 'all' %} with status <b>{{ status_filter }}</b>{% endif %}. Run a pass from the terminal, or clear the filter.</p>
+  </div>
+{% else %}
+  <div class="board-scroll">
+    <table class="board">
+      <colgroup>
+        <col class="c-case"><col class="c-exp"><col class="c-act"><col class="c-st"><col class="c-rev">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>case</th><th>expected</th><th>actual</th><th>status</th><th>review</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in evals %}
+          {% include 'partials/eval_row.html' %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

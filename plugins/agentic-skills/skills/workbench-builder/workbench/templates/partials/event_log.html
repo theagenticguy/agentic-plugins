@@ -1,0 +1,20 @@
+{#
+  Compact event log. `events` is already ordered newest-first (ORDER BY id DESC
+  LIMIT 25) by the query, so just loop as given. Each row is a .ev grid:
+  a .src tag (colored human/claude/system) + a .t timestamp + the message in a
+  .md block (so claude markdown notes hydrate; index.html's row click handler
+  reads .src/.t/.md to open the detail sheet).
+#}
+{% if not events %}
+  <p class="empty">No events yet. Actions from the browser and the terminal show up here.</p>
+{% else %}
+  {% for ev in events %}
+    <div class="ev" tabindex="0" role="button">
+      <span class="src {{ ev.source }}">{{ ev.source }}</span>
+      <div>
+        <div class="t">{{ ev.created_at }}</div>
+        <div class="md">{{ ev.message }}</div>
+      </div>
+    </div>
+  {% endfor %}
+{% endif %}

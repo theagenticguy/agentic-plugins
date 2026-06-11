@@ -1,0 +1,27 @@
+{#
+  Numeric run summary — the four stat tiles only. The Chart.js history + split
+  charts live in index.html's .charts div (sibling of #run-summary) and fetch
+  /data/run-history themselves; this partial is the .stat counts that the
+  doughnut chart reads back via `.stat.pass .n` etc. Do NOT add a canvas here.
+
+  `s` is one aggregate row: n_pass, n_fail, n_review, total (SUM/COUNT may be
+  NULL when the table is empty, so coalesce to 0).
+#}
+<div class="stats">
+  <div class="stat pass">
+    <div class="n">{{ s.n_pass or 0 }}</div>
+    <div class="k">pass</div>
+  </div>
+  <div class="stat fail">
+    <div class="n">{{ s.n_fail or 0 }}</div>
+    <div class="k">fail</div>
+  </div>
+  <div class="stat review">
+    <div class="n">{{ s.n_review or 0 }}</div>
+    <div class="k">review</div>
+  </div>
+  <div class="stat total">
+    <div class="n">{{ s.total or 0 }}</div>
+    <div class="k">total</div>
+  </div>
+</div>

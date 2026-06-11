@@ -1,0 +1,21 @@
+{#
+  The activity feed (/partials/event-log, sse:event-log). Newest-first, capped
+  at 25 by app.py. Each row is one event: source ∈ human | claude | system,
+  plus a message and created_at. Source colors the chip so you can scan who did
+  what (human teal, claude navy, system muted).
+#}
+{% set tone = {'human': 'ok', 'claude': 'signal', 'system': 'muted'} %}
+
+{% if not events %}
+  <p class="empty">No activity yet.</p>
+{% endif %}
+
+{% for e in events %}
+  <div style="display:flex; gap:8px; align-items:baseline; padding:4px 0;
+              border-bottom:1px solid var(--border);">
+    <span class="tag" style="color:var(--{{ tone.get(e.source, 'muted') }});
+                             min-width:52px;">{{ e.source }}</span>
+    <span style="flex:1; min-width:0; overflow-wrap:anywhere;">{{ e.message }}</span>
+    <span class="tag">{{ e.created_at }}</span>
+  </div>
+{% endfor %}

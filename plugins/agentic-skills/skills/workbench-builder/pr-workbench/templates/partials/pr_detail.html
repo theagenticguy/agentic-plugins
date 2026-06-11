@@ -1,0 +1,97 @@
+{#
+  PR detail sheet body. Kwargs (app.py p_pr ~L277):
+    pr, files, concerns, overlap, maxf, collide_paths
+  Rendered INTO #sheet by openPR(): sheet.innerHTML = html, then renderMd(sheet)
+  hydrates every .md (markdown + ```mermaid fences), then htmx.process(sheet)
+  wires the hx-* below. The summary + architecture sketch ride in ONE .md div —
+  we emit raw markdown as textContent; the client renders it (no server-side md).
+
+  overlap rows = (number, id, path): which other PRs share a file. The chip
+  carries data-pr=o.id so the click listener can deep-link into that PR.
+  collide_paths = set of paths in any cross-PR collision → marks the file row.
+  The you→claude thread loads lazily via hx-get into #thread-<id> and refreshes
+  on sse:thread-<id> (the event app.py publishes when Claude picks up / answers).
+#}
+<div class="sheet-head">
+  <div class="row1">
+    <span class="pr-num">#{{ pr.number }}</span>
+    <span class="pr-state {{ pr.state }}">{{ pr.state }}</span>
+    <span class="pr-risk {{ pr.risk }}">{{ pr.risk }} risk</span>
+    <button class="x" data-close type="button">esc ✕</button>
+  </div>
+  <h2>{{ pr.title }}</h2>
+  <div class="pr-meta">
+    <span class="author">{{ pr.author }}</span>
+    <span class="branch">{{ pr.branch }}</span>
+    <span>+{{ pr.additions }} / -{{ pr.deletions }}</span>
+    <span>{{ pr.updated_at }}</span>
+  </div>
+</div>
+
+<div class="sheet-body">
+  {% if pr.summary %}
+  <div class="sec">
+    <h3>intent · summary</h3>
+    <div class="md">{{ pr.summary }}</div>
+  </div>
+  {% endif %}
+
+  <div class="sec">
+    <h3>files · {{ files|length }} touched</h3>
+    {% if not files %}
+      <p class="empty">No files recorded for this PR.</p>
+    {% endif %}
+    {% for f in files %}
+      {% set fchurn = f.additions + f.deletions %}
+      {% set adds_pct = (f.additions * 100 / fchurn) if fchurn else 0 %}
+      {% set bar_pct = (fchurn * 100 / maxf) if maxf else 0 %}
+      <div class="file">
+        <span class="k {{ f.kind }}" title="{{ f.kind }}">{{ f.kind[0]|upper }}</span>
+        <span class="p">
+          {{ f.path }}
+          {% if f.path in collide_paths %}<span class="collide">⚠ collides</span>{% endif %}
+        </span>
+        <span class="bar" title="+{{ f.additions }} / -{{ f.deletions }}" style="width: {{ 18 + (72 * bar_pct / 100) }}px;">
+          <span class="a" style="width: {{ adds_pct }}%"></span>
+          <span class="d" style="width: {{ 100 - adds_pct }}%"></span>
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if overlap %}
+  <div class="sec">
+    <h3>shares files with</h3>
+    {% for o in overlap %}
+      <span class="overlap-chip" data-pr="{{ o.id }}" title="{{ o.path }}">#{{ o.number }} · {{ o.path }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="sec">
+    <h3>concerns · {{ concerns|length }}</h3>
+    {% if not concerns %}
+      <p class="empty">No concerns raised on this PR.</p>
+    {% endif %}
+    {% for c in concerns %}
+      <div class="concern {{ c.severity }}{{ ' resolved' if c.resolved else '' }}" id="concern-{{ c.id }}">
+        <div class="ctop">
+          <span class="sev">{{ c.severity }}</span>
+          <span class="ctitle">{{ c.title }}</span>
+          {% if c.path %}<span class="cpath">{{ c.path }}</span>{% endif %}
+        </div>
+        {% if c.body %}<div class="md">{{ c.body }}</div>{% endif %}
+        <button class="resolve" type="button"
+                hx-post="/concern/{{ c.id }}/resolve"
+                hx-swap="none">{{ 'reopen' if c.resolved else 'resolve' }}</button>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="sec">
+    <h3>review console · you → claude</h3>
+    <div id="thread-{{ pr.id }}"
+         hx-get="/partials/thread/{{ pr.id }}"
+         hx-trigger="load, sse:thread-{{ pr.id }}"></div>
+  </div>
+</div>

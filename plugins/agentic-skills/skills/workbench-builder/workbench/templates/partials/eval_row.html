@@ -1,0 +1,59 @@
+{#
+  ONE eval case as a single <tr>. Stands alone: eval_board.html {% include %}s it
+  per row, and the POST handlers (/evals/<id>/status, /evals/<id>/note) return it
+  by itself so htmx swaps just this row in place. The action forms target
+  #ev-{{ e.id }} with hx-swap="outerHTML" so the row replaces itself.
+
+  claude_note goes into <div class="md">{{ raw markdown }}</div> — NOT
+  server-rendered. index.html's renderMarkdown() hydrates .md:not([data-md])
+  blocks (marked + highlight.js + mermaid), re-run on every htmx:afterSwap.
+#}
+<tr id="ev-{{ e.id }}">
+  <td>
+    <span class="case-name">{{ e.name }}</span>
+    <span class="case-in">{{ e.input }}</span>
+
+    <div class="actions" style="margin-top:7px;">
+      <form hx-post="/evals/{{ e.id }}/status" hx-target="#ev-{{ e.id }}" hx-swap="outerHTML">
+        <input type="hidden" name="status" value="pass">
+        <button class="btn" type="submit" data-k="pass">pass</button>
+      </form>
+      <form hx-post="/evals/{{ e.id }}/status" hx-target="#ev-{{ e.id }}" hx-swap="outerHTML">
+        <input type="hidden" name="status" value="fail">
+        <button class="btn" type="submit" data-k="fail">fail</button>
+      </form>
+      <form hx-post="/evals/{{ e.id }}/status" hx-target="#ev-{{ e.id }}" hx-swap="outerHTML">
+        <input type="hidden" name="status" value="needs-review">
+        <button class="btn" type="submit" data-k="review">review</button>
+      </form>
+    </div>
+  </td>
+
+  <td class="io{% if not e.expected %} empty{% endif %}">{{ e.expected if e.expected else '—' }}</td>
+
+  <td class="io{% if not e.actual %} empty{% endif %}">{{ e.actual if e.actual else '(no output)' }}</td>
+
+  <td><span class="pill {{ e.status }}">{{ e.status }}</span></td>
+
+  <td>
+    {% if e.human_note %}
+      <div class="hnote">
+        <div class="who">human<button class="expand" type="button" data-title="human note">expand &rarr;</button></div>
+        <div class="md">{{ e.human_note }}</div>
+      </div>
+    {% endif %}
+
+    {% if e.claude_note %}
+      <div class="cnote">
+        <div class="who">claude<button class="expand" type="button" data-title="claude note">expand &rarr;</button></div>
+        <div class="md">{{ e.claude_note }}</div>
+      </div>
+    {% endif %}
+
+    <form class="note-form" hx-post="/evals/{{ e.id }}/note" hx-target="#ev-{{ e.id }}" hx-swap="outerHTML" style="margin-top:5px;">
+      <input class="note-in" type="text" name="human_note"
+             value="{{ e.human_note or '' }}"
+             placeholder="add a human note &rarr;" autocomplete="off">
+    </form>
+  </td>
+</tr>

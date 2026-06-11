@@ -1,0 +1,58 @@
+{#
+  Per-PR you→claude request thread. Kwargs: reqs, pid. Rendered into
+  #thread-<pid> on load and on sse:thread-<pid>; ALSO returned directly by
+  POST /pr/<pid>/ask (app.py render_thread), so the ask form below swaps its
+  own response back in — hx-target #thread-<pid>, innerHTML.
+
+  Each request: the human's ask (.who you) + Claude's reply (.who claude) once
+  answered. While queued/working we show the pending dots. The quick-action
+  buttons just preset the `kind` field; the terminal fills `body` defaults for
+  blank asks (see app.py ask()). reqs come newest-first (ORDER BY id DESC).
+#}
+<div class="composer">
+  <form hx-post="/pr/{{ pid }}/ask" hx-target="#thread-{{ pid }}" hx-swap="innerHTML"
+        hx-on::after-request="this.reset()">
+    <div class="quick">
+      <button class="qbtn" type="submit" name="kind" value="investigate">investigate</button>
+      <button class="qbtn" type="submit" name="kind" value="draft-comment">draft comment</button>
+      <button class="qbtn" type="submit" name="kind" value="merge-check">merge check</button>
+      <button class="qbtn" type="submit" name="kind" value="summarize">summarize</button>
+    </div>
+    <textarea class="ask-in" name="body" rows="2"
+              placeholder="Ask Claude to investigate, draft a comment, check merge order…"></textarea>
+    <button class="ask-send" type="submit" name="kind" value="ask">ask claude &rarr;</button>
+  </form>
+</div>
+
+{% if not reqs %}
+  <p class="empty">No requests yet. Hand Claude a review task above — it picks them up from the terminal.</p>
+{% endif %}
+
+{% for r in reqs %}
+  <div class="req {{ r.status }}">
+    <div class="req-top">
+      <span class="who you">you</span>
+      <span class="req-kind">{{ r.kind }}</span>
+      <span class="req-status {{ r.status }}">{{ r.status }}</span>
+      <span class="req-t">{{ r.created_at }}</span>
+    </div>
+    <div class="req-ask md">{{ r.body }}</div>
+
+    {% if r.response %}
+      <div class="req-resp">
+        <div class="req-top">
+          <span class="who claude">claude</span>
+          <span class="req-status answered">answered</span>
+          {% if r.answered_at %}<span class="req-t">{{ r.answered_at }}</span>{% endif %}
+        </div>
+        <div class="md">{{ r.response }}</div>
+      </div>
+    {% else %}
+      <div class="req-resp pending">
+        <span class="who claude">claude</span>
+        {% if r.status == 'working' %}working{% else %}queued{% endif %}
+        <span class="dots"><i></i><i></i><i></i></span>
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
