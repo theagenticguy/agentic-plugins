@@ -1,0 +1,21 @@
+{
+  "name": "hermes-tweet",
+  "version": "0.1.6",
+  "description": "Claude Code guidance for installing and using Hermes Tweet, the native Hermes Agent X/Twitter plugin for Xquik automation.",
+  "author": {
+    "name": "Xquik",
+    "url": "https://github.com/Xquik-dev"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "hermes-agent",
+    "hermes-plugin",
+    "xquik",
+    "twitter",
+    "x",
+    "social-media",
+    "automation",
+    "agent-tools"
+  ]
+}
