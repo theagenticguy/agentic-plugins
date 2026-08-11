@@ -11,8 +11,8 @@
     {
       "name": "agentic-skills",
       "source": "./plugins/agentic-skills",
-      "description": "Flagship skills for AI coding agents. Includes workbench-builder: disposable localhost Flask + sqlite3 + htmx + SSE workbenches with a two-way human↔agent loop — eval viewers, PR review rooms, document-redline surfaces, trace replays, and refactor cockpits, with no build step or deploy.",
-      "version": "0.1.0",
+      "description": "Flagship skills for AI coding agents. Includes workbench-builder: disposable localhost Bun.serve + bun:sqlite + React 19 + Astryx workbenches with a two-way human↔agent loop over SSE — eval viewers, PR review rooms, document-redline surfaces, grid/spreadsheet editors, multi-surface triage queues, and trace replays, with zero build config and no deploy.",
+      "version": "0.2.0",
       "author": {
         "name": "Laith Al-Saadoon"
       },
@@ -25,8 +25,8 @@
         "ai-agents",
         "workbench",
         "localhost",
-        "flask",
-        "htmx",
+        "bun",
+        "react",
         "sse",
         "sqlite",
         "eval-viewer",
@@ -39,8 +39,9 @@
         "ai-agents",
         "workbench",
         "localhost",
-        "flask",
-        "htmx",
+        "bun",
+        "react",
+        "astryx",
         "sse",
         "server-sent-events",
         "sqlite",

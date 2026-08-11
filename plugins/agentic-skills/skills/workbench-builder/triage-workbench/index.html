@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- Fullstack entry: Bun.serve imports this file and transpiles src/main.tsx
+     (and everything it imports, including CSS) on demand. No bundler config. -->
+<!-- `astryx theme build` wraps every rule it emits in
+     `@scope ([data-astryx-theme="graphite"]) to ([data-astryx-theme])`, so the
+     Graphite tokens only resolve on elements carrying that attribute. The <Theme>
+     provider in src/main.tsx writes both attributes onto <html> too, but it does
+     so in a layout effect — declaring them here means the first painted frame is
+     already Graphite instead of flashing core's light-dark() defaults.
+     data-theme drives color-scheme, hence browser chrome (scrollbars, native
+     controls); it must match the provider's `mode`. -->
+<html lang="en" data-astryx-theme="graphite" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Triage Workbench</title>
+    <!-- Pins @layer precedence ahead of the bundler's stylesheet links. Bun
+         emits the CSS imports from src/main.tsx in reverse order, and
+         src/theme/graphite.css opens with its own `@layer reset` block, so
+         first-appearance ordering resolves to `reset, astryx-theme, astryx-base`:
+         astryx-base wins and core's :root token defaults beat Graphite's :scope
+         tokens even with the attribute set. This statement fixes the order
+         however the links land. Layer names verified against the built CSS —
+         `astryx theme build` emits exactly `reset` and `astryx-theme`. -->
+    <style>@layer reset, astryx-base, astryx-theme;</style>
+    <!-- Per-workbench identity, one property. Graphite is the single theme across
+         the catalog; `--wb-header-accent` is the only thing a workbench changes,
+         and the theme's h1 rule reads it for the header rule.
+
+         The selector is `[data-astryx-theme="graphite"]`, NOT `:root`. <Theme>
+         renders a `display:contents` wrapper div carrying the same attribute, and
+         graphite.css re-declares every token on `:scope` — which matches that
+         wrapper. A `:root` override therefore never reaches the h1: the wrapper
+         shadows it on the way down. This selector matches BOTH <html> and the
+         wrapper, and being unlayered it outranks the layered `:scope` declaration
+         on the same element. Two workbenches open side-by-side are told apart by
+         this one rule. -->
+    <style>[data-astryx-theme="graphite"] { --wb-header-accent: #6a3f76; }</style>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%236a3f76'/></svg>" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
