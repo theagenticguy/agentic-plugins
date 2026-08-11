@@ -3,20 +3,20 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "I'm iterating on a judge prompt and I keep losing track of which test cases pass and fail across runs — it's all scrolling past in the terminal. Can you spin me up a little local UI where I can see the cases in a table, click pass/fail/needs-review, leave notes, and have it update live as I re-run the evals from the terminal? Nothing fancy, no React or deploy.",
-      "expected_output": "A runnable Flask+SQLite+htmx+SSE eval-viewer workbench: app.py with named-event SSE invalidation, partials, a terminal helper to record results, bound to 127.0.0.1, no build step. Verified to actually run.",
+      "prompt": "I'm iterating on a judge prompt and I keep losing track of which test cases pass and fail across runs — it's all scrolling past in the terminal. Can you spin me up a little local UI where I can see the cases in a table, mark approve/flag, leave notes, and have it update live as I re-run the evals from the terminal? Nothing I have to deploy.",
+      "expected_output": "A runnable Bun.serve + bun:sqlite + React 19 + Astryx eval-viewer workbench: server.ts with named-event SSE invalidation, useRegion-subscribed region components, a zero-dependency bun terminal script to record results, bound to 127.0.0.1, no bundler config. Verified in a headless browser: terminal POST updates the open page live with no reload.",
       "files": []
     },
     {
       "id": 2,
       "prompt": "I've got 5 open PRs on our payments service that all touch overlapping files and I can't tell what's safe to merge first. I want a local review surface that shows each PR, flags which files collide across PRs, and suggests a merge order — and lets me ask you to dig into a specific one. Build it for me locally.",
-      "expected_output": "A PR review room workbench: prs/pr_files/concerns schema with a file-collision query (GROUP BY ... HAVING count>1) driving a merge-order suggestion, a fleet board + collision rail + detail sheet, and a two-way request/respond loop. Flask+htmx+SSE, 127.0.0.1, runnable.",
+      "expected_output": "A PR review room workbench: prs/pr_files/concerns schema with a file-collision query (GROUP BY ... HAVING count>1) driving a merge-order suggestion, a fleet board + collisions rail + detail dialog on Astryx components, and a two-way request/respond loop. Bun.serve + bun:sqlite + React + SSE, 127.0.0.1, runnable with bun --hot server.ts.",
       "files": []
     },
     {
       "id": 3,
       "prompt": "We just had an incident and I have a mess of timestamps from Slack, CloudWatch, and a couple of deploy logs. I want to drop them into something where I can see them on a timeline, correct the order, and have you turn it into a postmortem draft as I go. Can you build me a quick throwaway tool for this on my machine?",
-      "expected_output": "An incident-timeline workbench: an ordered events table with severity/source lanes, a browser surface to review/correct ordering, and a terminal loop where the agent drafts the postmortem from the corrected timeline. Disposable, localhost, htmx+SSE, no build step.",
+      "expected_output": "An incident-timeline workbench: an ordered timeline table with severity/source lanes, a browser surface to review/correct ordering and toggle which events belong in the official narrative, and a terminal loop where the agent drafts the postmortem from the curated timeline. Disposable, 127.0.0.1, Bun + React + SSE invalidation, zero build config.",
       "files": []
     }
   ]

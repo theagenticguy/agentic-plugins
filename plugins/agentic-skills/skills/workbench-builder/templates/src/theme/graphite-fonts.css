@@ -1,0 +1,42 @@
+/*
+ * Graphite font strategy — zero network, metric-adjusted local fallbacks.
+ *
+ * Transcribed from the canonical strategy at
+ *   frontier-field-note/apps/field-notes/src/field-notes.css:19-50
+ *   frontier-field-note/apps/tower/src/app.css:142-175
+ *
+ * Two rules govern it:
+ *
+ * 1. NO NETWORK FONT LOADING. `src: local(...)` only — no Google Fonts <link>,
+ *    no @import, no @fontsource package. A workbench binds to 127.0.0.1 for one
+ *    session and must render identically on a plane; a font request that cannot
+ *    resolve is a blank first paint, not a graceful degrade. If the real webfont
+ *    is installed on the machine, the stack's first entry picks it up; if not,
+ *    the rule below stands in.
+ *
+ * 2. THE FALLBACK IS METRIC-MATCHED, NOT MERELY SIMILAR. The stack in
+ *    graphiteTheme.ts names 'IBM Plex Sans fallback' as its second entry. An
+ *    undefined family name is skipped silently, so without this file the stack
+ *    hands off straight from the system sans to the webfont — a visible reflow on
+ *    every line of body copy the moment the real face resolves. Re-scaling a
+ *    local Arial to IBM Plex Sans's own metrics puts the swap at CLS ~= 0.
+ *
+ * WHY THIS FILE AND NOT graphite.css: `astryx theme build` wraps every rule it
+ * emits in `@layer … { @scope ([data-astryx-theme="graphite"]) … }`, and
+ * @font-face is a top-level at-rule — it cannot be scoped, and inside @scope it
+ * would be dropped. The declarations also have to be visible to the whole
+ * document, not just the themed subtree. So the fonts ship as a sibling
+ * stylesheet that every workbench imports alongside the built theme CSS.
+ *
+ * Override values come from capsize 3.7.0: IBM Plex Sans upm 1000, ascent 1025,
+ * descent -275, xWidthAvg 451, against Arial's 935/2048 → size-adjust 98.79%.
+ */
+
+@font-face {
+  font-family: "IBM Plex Sans fallback";
+  src: local("Arial");
+  size-adjust: 98.79%;
+  ascent-override: 103.76%;
+  descent-override: 27.84%;
+  line-gap-override: 0%;
+}

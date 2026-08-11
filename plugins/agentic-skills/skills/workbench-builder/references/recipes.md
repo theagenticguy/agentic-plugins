@@ -1,67 +1,84 @@
 # Workbench Recipes
 
-A workbench is one stack — Flask + raw `sqlite3` + Jinja partials + htmx-over-SSE — pointed at one data model. Every recipe below is the *same* runtime (`app.run(host="127.0.0.1", ..., debug=True, threaded=True)`, the SSE fan-out, the named-event invalidation pattern, the markdown/mermaid/highlight render pipeline). What changes from recipe to recipe is the schema, the layout, and what the terminal half ingests.
+A workbench is one stack — Bun.serve + bun:sqlite + React 19 + Astryx + SSE invalidation — pointed at one data model. Every recipe below is the *same* runtime (`bun --hot server.ts` on `127.0.0.1`, the `publish()` fan-out, `useRegion` on the client, the JSON mutation path). What changes from recipe to recipe is the schema, the layout, and what the terminal half ingests.
 
-**The data model is the design.** Phase 0 of the build (`references/orchestrator.md`) spends its time here, not on CSS. Once you know the tables, the columns, and the foreign keys, the partials, the SSE targets, and the terminal endpoints fall out almost mechanically — each table that a human or the agent mutates becomes a `publish()` target and a `GET /partials/<region>` route. Pick the recipe whose data model is closest to your problem, then bend the columns to fit.
+**The data model is the design.** Phase 0 of the build (`references/orchestrator.md`) spends its time here, not on CSS. Once you know the tables, the columns, and the foreign keys, the regions, the `publish()` targets, and the terminal endpoints fall out almost mechanically — each table a human or the agent mutates becomes a `publish()` target and a `regions` entry. Pick the recipe whose data model is closest to your problem, then bend the columns to fit.
 
 Each recipe gives four things:
 
 - **Intent** — the one-line job.
-- **Data model** — the SQLite tables and the key columns. This is the load-bearing part.
+- **Data model** — the SQLite tables and key columns. This is the load-bearing part.
 - **Layout** — the panel shape in the browser.
-- **Terminal ingests** — what the Claude-side helper scripts POST in (and read back, when the loop is two-way).
+- **Terminal ingests** — what the agent-side scripts POST in (and read back, when the loop is two-way).
 
-The three leading recipes are *built and verified* — read their source. The rest are sketches at the same altitude: enough to scaffold from, not yet hardened in a browser.
-
----
+The five leading recipes are *built and browser-verified* — read their source. The rest are sketches at the same altitude: enough to scaffold from, not yet hardened in a browser.
 
 ## Contents
 
 - Eval viewer — BUILT
-- PR review room — BUILT
 - Document review / redline — BUILT
-- The rest — sketches at the same altitude
-  - Agent trace replay
-  - Refactor cockpit
-  - Data-cleanup workbench
-  - Prompt / skill lab
-  - Architecture decision board
-  - Incident timeline builder
-  - Migration planner
+- PR review room — BUILT
+- Grid / spreadsheet triage — BUILT
+- Multi-surface triage — BUILT
+- Agent trace replay
+- Refactor cockpit
+- Prompt / skill lab
+- Architecture decision board
+- Incident timeline builder
+- Migration planner
 - Picking and bending a recipe
 
 ## 1. Eval viewer — BUILT
 
-Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/workbench/` (`app.py`, `templates/index.html`, `templates/partials/*`, `scripts/record_eval_result.py`, `scripts/post_claude_note.py`).
+Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/eval-viewer/` (`server.ts`, `src/`, `scripts/record-result.ts`, `scripts/review-loop.ts`). Port 5050, Graphite (`mode="light"`, header accent `#0a6961` teal — the theme default).
 
-**Intent.** Scan a set of eval cases, mark each pass / fail / needs-review by hand, read notes from both the human and Claude, and watch the pass-rate trend move as the terminal re-runs the suite.
+**Intent.** Scan a set of eval cases, mark each approved / flagged by hand, read notes from both the human and the agent, and watch the pass-rate trend move as the terminal re-runs the suite.
 
-**Data model** (`workbench/app.py` `SCHEMA`). Three tables, no foreign keys — the simplest shape that still demonstrates the two-way loop:
+**Data model** (`eval-viewer/server.ts`). Four tables:
 
-- `evals(id, name, input, expected, actual, status, human_note, claude_note, updated_at)` — one row per case. `status` is the human's verdict (`pass | fail | needs-review`); `actual` and `claude_note` are the terminal's columns, `status` and `human_note` are the browser's. The split-ownership of columns on one row is what makes the loop concrete: each side writes its own fields, both see the merged row.
-- `runs(id, label, n_pass, n_fail, n_review, created_at)` — a denormalized snapshot per suite run, seeded with two historical rows so the trend chart has a line on first load. The terminal appends a snapshot via `/claude/run`; the browser never writes here.
-- `events(id, source, message, created_at)` — an append-only activity log; `source` is `human | claude | system`. Every mutation on either side calls `log_event(...)`, so the log is the shared narration of who did what.
+- `evals(id, name, prompt, expected, actual, claude_note, outcome, status, human_note, created_at)` — one row per case. **Split ownership on one row is what makes the loop concrete:** `actual`/`claude_note`/`outcome` are the terminal's columns; `status`/`human_note` are the browser's. Each side writes its own fields; both see the merged row.
+- `runs(id, label, passed, failed, duration_s, created_at)` — a snapshot per suite run; feeds the stacked chart. The terminal appends via `/claude/run`; the browser never writes here.
+- `events(id, kind, detail, eval_id, created_at)` — append-only activity log, the shared narration of who did what.
+- `requests(...)` — the standard human→agent channel (`queued → working → answered`).
 
-**Layout.** A board of eval rows (filterable by status), a run-summary tile (pass/fail/review counts), an activity-log column, and a Chart.js stacked-area trend over `runs`. The board re-renders per-row on a status/note change (`partials/eval_row.html`) so a single click swaps one row, not the whole board.
+**Layout.** A board of eval cards (outcome badge + collapsible detail with prompt/expected/actual, the agent's note — which renders markdown and mermaid — and a verdict bar), an outcomes donut, a run-history stacked bar, the ask queue, the activity log. `eval-viewer/src/App.tsx` is the composition; each region is one component subscribed with `useRegion`.
 
-**Terminal ingests.** `record_eval_result.py` → `POST /claude/eval-result` writes `actual` + `status` for a case; `post_claude_note.py` → `POST /claude/note` writes a GFM-rich `claude_note` (the seed note carries a fenced code block, a mermaid flowchart, and a table — it exists to prove the render pipeline on first load). `POST /claude/run` snapshots the current counts into `runs`. The closing-the-loop read is `GET /claude/feedback`: the terminal pulls back which cases the human marked or annotated, so Claude can react to human verdicts. Each terminal write `publish()`es the regions it touched (`eval-board`, `run-summary`, `run-history`, `event-log`).
+**Terminal ingests.** `record-result.ts <name> <pass|fail>` upserts a case via `/claude/eval-result`; `record-result.ts --run <label> <passed> <failed>` snapshots a run via `/claude/run`. The closing-the-loop read is `GET /claude/feedback` — the terminal pulls back which cases the human approved or flagged, so the agent can react to verdicts. `review-loop.ts` drives the queue/respond pair.
 
----
+## 2. Document review / redline — BUILT
 
-## 2. PR review room — BUILT
+Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/doc-review/` (`server.ts`, `src/`, `scripts/review.ts`, `sample-doc.html`). Port 5057, Graphite (`mode="light"`, header accent `#274d7a` navy). Point at a real file with `REVIEW_DOC=/path/to/doc.html bun --hot server.ts`; with no arg it serves the bundled sample.
 
-Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/pr-workbench/` (`app.py`, `templates/*`, `scripts/analyze_pr.py`, `scripts/review_loop.py`).
+**Intent.** Review a document the way you would in Google Docs. Select a span of text; leave a comment, or a redline proposing a replacement. The agent reads the notes from the terminal, applies them to the source, and resolves each one — the card flips and the highlight clears, live.
 
-**Intent.** Not a diff viewer — a *synthesis* surface for a multi-PR change-set. Read every open PR at a glance, see which ones collide on the same files (the merge-order risk), drill into any one for intent + file churn + open concerns + an architecture sketch, and hand Claude a review task that it answers back into the same room.
+**Data model** (`doc-review/server.ts`). One table carries the whole loop:
 
-**Data model** (`pr-workbench/app.py` `SCHEMA`). Four tables, real foreign keys with `ON DELETE CASCADE` — the relational shape is what unlocks the unique value (see the collisions query below):
+`annotations(id, block_id, start, end, quote, kind, body, status, reply, created_at, resolved_at)` — `kind` is `comment | redline`, `status` walks `open → resolved | wontfix`, `reply` is the agent's answer. The browser writes the note; the terminal writes the resolution. Split ownership, specialized for prose.
 
-- `prs(id, number, title, author, branch, summary, state, risk, additions, deletions, updated_at)` — one row per PR. `summary` is markdown (the seed embeds a mermaid flowchart). `state` is `open | draft | approved | changes`; `risk` is `low | medium | high` and drives board sort order.
-- `pr_files(id, pr_id→prs, path, additions, deletions, kind)` — one row per file touched per PR. **This is the table that makes the room more than a list:** because `path` repeats across PRs, a self-join on `path` surfaces overlap, and a `GROUP BY path` surfaces collisions.
-- `concerns(id, pr_id→prs, severity, title, body, path, resolved)` — review findings; `severity` is `blocker | warn | nit`, `body` is markdown, `resolved` toggles. Open-blocker counts roll up onto the fleet board.
-- `requests(id, pr_id→prs, kind, body, status, response, created_at, answered_at)` — **the human→agent channel that makes this a workbench, not a dashboard.** `pr_id` is nullable (a null means a whole-set ask). `kind` is `ask | investigate | draft-comment | merge-check | summarize`; `status` walks `queued → working → answered`; `body` is what the human asked and `response` is what Claude answered, both markdown. This one table closes the loop.
+The document is not a table: the server parses it once at boot into ordered blocks (h1/h2/h3/p/li/blockquote/td/th/caption), **normalizing each block's text** — entities decoded, whitespace collapsed (`parseBlocks`/`normalize` in `server.ts`).
 
-**The unique multi-PR value — the `collisions()` query.** `pr-workbench/app.py` `collisions()` is the heart of the recipe:
+**Char-perfect anchoring.** A painted `<mark>` must cover exactly the characters the human selected. React makes this tractable: `BlockView` (`src/components/Document.tsx`) renders **exactly the server's stored string** as alternating text/mark segments, so the browser's `textContent` equals the stored text by construction — no template whitespace to trim, no entity mismatch. The selection handler walks the block's text nodes (TreeWalker) to convert the DOM range into character offsets into that same string. The server then **rejects drifted anchors with a 409**: an annotation is stored only if `block.text.slice(start, end) === quote`. Verify the way Phase 4 does: select a span crossing an entity (an em-dash), save, assert the painted `<mark>` equals the selection.
+
+**Layout.** Two columns — the document reads as a page on the left with annotations painted as colored `<mark>`s (amber comments, rose redlines); the annotation rail sits on the right, cards showing quote, note, status badge, and the agent's reply. Selecting text opens a fixed-position compose popover (Comment/Redline toggle + textarea).
+
+**Terminal ingests.** `scripts/review.ts` — `list [status]`, `show <id>`, `resolve <id> "reply"`, `wontfix <id> "reply"`, `reopen <id>`, `json`. The work queue is the filtered region `GET /api/regions/annotations?status=open`. A session loops: the human leaves a batch, says "drain the review," the agent edits the source and resolves each note, and the page turns green card by card.
+
+**Bending it.** The shape fits anything that is "anchor a human note to a span of a fixed artifact, then have the agent resolve it" — spec reviews, transcript labeling, log callouts. If the artifact is line-oriented (code, logs), anchor on `(block_id, line)` instead of char offsets and the normalization problem disappears entirely.
+
+## 3. PR review room — BUILT
+
+Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/pr-workbench/` (`server.ts`, `src/`, `scripts/analyze-pr.ts`, `scripts/review-loop.ts`). Port 5051, Graphite (`mode="dark"`, header accent `#2fb6a4` dark-mode teal) — the catalog's dark surface.
+
+**Intent.** Not a diff viewer — a *synthesis* surface for a multi-PR change-set: every open PR at a glance, which ones collide on the same files (the merge-order risk), per-PR drill-in, and a review-task queue the agent answers back into the room.
+
+**Data model.** Four tables, real foreign keys with `ON DELETE CASCADE`:
+
+- `prs(id, number, title, author, branch, summary, state, risk, additions, deletions, updated_at)` — `summary` is markdown; `state` is `open | draft | approved | changes`; `risk` drives board sort.
+- `pr_files(id, pr_id→prs, path, additions, deletions, kind)` — one row per file touched per PR. **This table makes the room more than a list:** `path` repeats across PRs, so a `GROUP BY path` surfaces collisions.
+- `concerns(id, pr_id→prs, severity, title, body, path, resolved)` — findings; `severity` is `blocker | warn | nit`.
+- `requests(...)` — the standard channel; `kind` extends to `ask | investigate | draft-comment | merge-check | summarize`.
+
+**The unique value — the collisions query:**
 
 ```sql
 SELECT f.path,
@@ -74,152 +91,120 @@ HAVING n > 1
 ORDER BY n DESC, churn DESC
 ```
 
-`GROUP BY f.path ... HAVING n > 1` returns exactly the files that more than one PR touches — the merge-order risk map. `COUNT(DISTINCT f.pr_id)` is how many PRs collide on that path; `SUM(additions + deletions)` ranks by churn so the hottest contested file sorts first; the `GROUP_CONCAT(... '|' ...)` packs each colliding PR's number/risk/state into one string that the partial unpacks into chips. No diff tool gives you this — it is a fact about the *set*, not any one PR, and it is the reason to look at five PRs in one room instead of five tabs. The per-PR detail view runs the complementary self-join (`pr_files f1 JOIN pr_files f2 ON f1.path = f2.path AND f2.pr_id != f1.pr_id`) to show "who else touches my files," and marks any path in the collision set as hot.
+`HAVING n > 1` returns exactly the files more than one PR touches — a fact about the *set*, not any one PR, and the reason to look at five PRs in one room instead of five tabs. The per-PR detail runs the complementary self-join (`pr_files f1 JOIN pr_files f2 ON f1.path = f2.path AND f2.pr_id != f1.pr_id`) for "who else touches my files."
 
-**Layout.** An overview strip (PR count, total adds/dels, open blockers, collision count), a fleet board sorted by risk then churn (each card shows file count, blocker/warn/nit badges, and request-status spinners), a collisions panel (hot files → which PRs, churn-ranked), a per-PR detail sheet (summary markdown, file list with churn bars, concerns, overlap, a per-PR ask thread), and a global request queue.
+**Layout.** An overview strip (PR count, adds/dels, open blockers, collision count — ONE aggregate query whose collision subquery reuses the `HAVING n > 1` shape, so the strip and the rail can never disagree), a fleet board sorted risk-then-churn (Card per PR: state and risk badges, file count, concern severity counts), a collisions rail (hot files → PR chips), a per-PR `Dialog` detail (summary via Astryx `Markdown`, pure-CSS churn bars — a self-measuring chart inside an initially-closed Dialog is the 0×0 trap, so churn renders as width-percentage divs — concerns, overlap, ask thread), the global queue.
 
-**Terminal ingests.** `analyze_pr.py` → `POST /pr/ingest` upserts a whole analyzed PR by number (title, summary, files, concerns) — Claude reads a real diff, classifies the files and concerns, and posts the structured result; the server recomputes collisions on every ingest. The two-way loop: the human files a review task via `POST /pr/<id>/ask` (htmx form), `review_loop.py` pulls it with `GET /claude/queue` (which flips `queued → working` so the human sees the spinner move), and posts the answer with `POST /claude/respond` (`working → answered`). The queue-pull-and-flip is the detail that makes the loop feel live: the human sees Claude *pick up* the task, not just answer it.
+**Per-PR detail is a parameterized region** (`pr-<id>`), not a plain GET: re-ingesting a PR whose dialog is open must repaint the open dialog, and `publish(`pr-${id}`)` + `useRegion(`pr-${id}`)` gets that for free — including reconnect healing. The cost is a prefix-match branch in the region route (`pr-workbench/server.ts`).
 
----
+**Badge semantics** (from the Astryx manifest's own best-practice note): concern `severity` uses the semantic scale (`blocker→error`, `warn→warning`, `nit→neutral`) because it demands attention; PR `state` uses categorical color variants (`open→blue`, `draft→neutral`, `approved→green`, `changes→orange`) so state and severity never read as the same axis.
 
-## 3. Document review / redline — BUILT
+**Terminal ingests.** `analyze-pr.ts` POSTs a whole analyzed PR (title, summary, files, concerns) to `/pr/ingest` — the agent reads a real diff, classifies, posts the structure; the server upserts by number (the `ON DELETE CASCADE` FKs make re-ingest replace files/concerns with zero orphans) and recomputes collisions. The agent's read-back is `GET /claude/collisions`, so the terminal can order its next review pass by merge risk. The queue/respond loop is standard.
 
-Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/doc-review/`. It holds `app.py`, `templates/index.html`, the `document` and `annotations` partials, `scripts/review.py`, and `sample-doc.html`. Set the reviewed file with `REVIEW_DOC=/path/to/doc.html uv run app.py`. With no arg it serves the bundled `sample-doc.html`.
+## 4. Grid / spreadsheet triage — BUILT
 
-**Intent.** Review a document the way you would in Google Docs. Select a span of text. Leave a comment, or a redline that proposes a replacement. The agent reads the notes from the terminal, applies them to the source file, and resolves each one. The card turns green and the agent's reply shows up, live. Built across several real review rounds on a memo.
+Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/grid-workbench/` (`server.ts`, `src/`, `scripts/patch-cell.ts`, `scripts/ingest-rows.ts`, `scripts/review-loop.ts`). Port 5062, Graphite (`mode="light"`, header accent `#7a5512` amber).
 
-**Data model** (`doc-review/app.py` `SCHEMA`). One table carries the whole loop:
+**Intent.** A spreadsheet-type experience over one SQLite table: click a cell to edit it inline, set a per-row keep/fix/drop decision, watch column stats update live — while the agent ingests rows and patches cells from the terminal, every edit landing in a shared audit log.
 
-`annotations(id, kind, block_id, start_off, end_off, quote, section, comment, suggestion, status, agent_note, created_at, resolved_at)`. One row per note. `kind` is `comment` or `redline`. The anchor is `(block_id, start_off, end_off)`. `quote` is the selected text. `section` is the nearest heading, filled server-side as a readable locator. `comment` is the human's note. `suggestion` is a redline's proposed replacement. `status` walks `open` to `addressed` to `wontfix`. `agent_note` is the terminal's reply.
+**Data model** (`grid-workbench/server.ts`). Three tables:
 
-The browser writes the note fields. The terminal writes `status` and `agent_note`. Each side owns its own columns on one shared row. This is the eval viewer's split-ownership shape, specialized for prose.
+- `rows(id, name, category, amount, date, notes, decision, updated_at)` — the dataset under triage; `decision` is `pending | keep | fix | drop`. Seeded with planted dirt (a bad date, an outlier amount, an empty category) so triage feels real on first boot.
+- `cells_log(id, row_id, column, old_value, new_value, actor, created_at)` — the audit trail; `actor` is `human | agent`. **Both actors write through one `writeCell()` funnel** that does the UPDATE and the log INSERT in a single transaction, so the audit is structurally unbypassable rather than conventionally maintained.
+- `requests(...)` — the standard channel.
 
-The document is not a table. It is a fixed HTML snapshot, parsed once at startup into ordered blocks. `parse_memo()` pulls `h1`, `h2`, `h3`, `p`, `li`, `td`, `th`, `blockquote`, `caption`, and `cite`, then renders each with `data-block="<id>"`. Offsets are block-relative, so they never drift during a review.
+**The unique value — actor-attributed cell edits.** The human watches the agent patch cells live and vice versa; the edit log is the shared narration. Column stats (count, empties, distinct, min/max) are SQL region queries, never client math. One security-shaped detail: the editable-column set is an allowlist because a column name cannot be parameter-bound into an UPDATE — that check is a control, not hygiene.
 
-**Char-perfect anchoring is the hard part.** A painted `<mark>` must cover exactly the characters the human selected. That only holds when the server's stored block text and the browser's `textContent` are byte-identical. Two rules keep them aligned. Both are easy to break.
+**Layout.** Astryx `Table` in data-driven mode is the grid (column widths via the `proportional()`/`pixel()` helpers — raw numbers are a type error), `renderCell` composing an `EditableCell` (click → TextInput → commit on Enter/blur, Escape cancels) and a per-row decision control; a column-stats rail; the edit log; the queue. Table sits in a `Card padding={0}` — the Table scroll-wrapper's negative-margin bleed overflows a padded Card by exactly the padding.
 
-1. Normalize identically on the server, in `_block_text`. Run `html.unescape` over every entity, not a hardcoded subset. That was the first bug. Then collapse each whitespace run to one space, or source-HTML newlines inject phantom offsets. Now `&mdash;`, `&rarr;`, and `&#39;` each become one character on the server, matching how the browser decodes them.
-2. Render with a fully whitespace-trimmed Jinja macro, in `partials/document.html`. Every tag uses `{%- -%}` or `{{- -}}`. One stray newline between text runs shifts every offset after it. That was the second bug. It stays invisible until you assert the painted span equals the selection. The browser computes an offset by walking the block's text nodes and summing their lengths. The rendered `textContent` equals the stored string, so that offset indexes the same string the server stored.
+**Terminal ingests.** `patch-cell.ts <row> <column> <value>` → `/claude/patch-cell` (actor `agent`); `ingest-rows.ts` bulk-loads; the read-back is `GET /claude/decisions` so the agent acts only on human-approved rows. `review-loop.ts` drives queue/respond.
 
-Verify it the way the build did. Select a span that crosses an entity such as an em-dash. Save it. Assert the rendered `<mark>` equals the selected substring. If it is off by a few characters, suspect macro whitespace first and entity normalization second.
+**Bending it.** Any "N uniform records, each needing a human verdict and occasional value fixes" fits: data cleanup, moderation queues, config audits, CSV reconciliation. Point the schema at your columns and keep `cells_log` verbatim — the actor attribution is the workbench.
 
-**Layout.** Light theme by default: warm off-white paper, a serif body, blue for comments, red for redlines, green for resolved. Two columns. The document reads as a page on the left, block by block, with saved annotations painted as `<mark>` underlines. An annotation rail sits on the right, cards sorted open-first. Each card shows the quoted span, the comment, any suggestion, and the agent's note once resolved. A floating toolbar appears on `mouseup` with Comment and Redline buttons. A compose popover shows what is selected: the exact quote plus the char range, such as "chars 28–49". Clicking a highlight scrolls to its card and flashes it. There is no markdown pipeline. The doc is HTML and comments are short, so htmx and the SSE extension are the only CDN deps.
+## 5. Multi-surface triage — BUILT
 
-**Terminal ingests.** `scripts/review.py` is the agent's half. `list` prints open annotations with section, quote, comment, and suggestion. `list --all` adds the resolved ones. `show <id>` and `json` dump detail for parsing. The resolve verbs are `resolve <id> "note"`, `wontfix <id> "note"`, and `reopen <id>`. Each resolve POSTs to `/api/annotations/<id>/resolve`, writes SQLite, and publishes `document` and `annotations`, so the browser updates with no reload. The annotation is the human's steer. A redline says "change this to that," and the agent answers by editing the file and resolving with what it did. The work queue is `GET /api/annotations?status=open`. A session loops: the human leaves a batch, says "drain the review," the agent edits the source and resolves each note, and the human reloads to see the round in green.
+Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/triage-workbench/` (`server.ts`, `src/`, `scripts/ingest.ts`, `scripts/mark-handled.ts`, `scripts/triage-loop.ts`). Port 5065, Graphite (`mode="light"`, header accent `#6a3f76` plum).
 
-**Bending it.** The table fits any problem shaped as "anchor a human note to a span of a fixed artifact, then have the agent resolve it." Review comments on a spec. Labels on a transcript. Callouts on a rendered log. Keep the anchoring rules verbatim if you keep text selection, since that is the part that is hard to get right. If the artifact is line-oriented, like code or logs, anchor on `(block_id, line)` instead of char offsets and the normalization problem disappears.
+**Intent.** One prioritized queue across email, Slack, calendar, and Asana. The agent ingests normalized items from the terminal (in a real session, from MCP tools); the human triages each (respond / delegate / defer / done / ignore); the agent reads decisions back and — the signature move — **marks items handled when it detects the human already dealt with them**, so the surface only ever shows what still needs attention.
 
----
+**Data model** (`triage-workbench/server.ts`).
+
+- `items(id, source, source_ref, kind, title, body, sender, due_at, priority, status, human_note, agent_note, ingested_at, handled_at)` — `source` is `email | slack | calendar | asana`; `status` walks `new → respond|delegate|defer|done|ignore → handled`. One `CLOSED` predicate constant defines "left the queue" once, shared by the `inbox` and `today` regions.
+- `events` + `requests` — the standard pair.
+
+**The unique value — reply-detection semantics + a parameterized region.** `POST /claude/mark-handled` accepts `id` *or* `source_ref` (the agent holds the upstream ref, not the local row id) and flips the item out of the inbox live. `source-summary` deliberately does NOT exclude closed statuses — handled volume stays visible in the chart after the inbox drops it, which makes the move legible instead of looking like data loss. The inbox is the catalog's worked example of a **parameterized region**: `useRegion("inbox", {source})` → `/api/regions/inbox?source=slack`, while the SSE event stays plain `inbox` so one `publish("inbox")` invalidates every filtered view (each page refetches with its own params — the right trade on loopback versus tracking per-subscriber filter state server-side).
+
+**Layout.** A `SegmentedControl` source filter (All | Email | Slack | Calendar | Asana) over item Cards — source as a categorical Badge color (email blue / slack purple / calendar teal / asana orange), triage status as a semantic Badge, priority as a `StatusDot`; the five triage buttons stay visible per card (a one-decision-per-item surface should not bury its verbs behind a disclosure — only the optional note collapses); a source × status ECharts stacked bar; a today rail keyed on `due_at`; event log; queue.
+
+**Terminal ingests.** `ingest.ts` bulk-POSTs normalized items to `/claude/ingest`; `mark-handled.ts` flips handled items; `triage-loop.ts` drives queue/respond and prints `GET /claude/decisions`. In a live session the ingest payload comes from real MCP reads (Outlook, Slack, calendar, Asana) — the workbench is the surface, not the connector.
 
 ## The rest — sketches at the same altitude
 
-Each of these is the same stack with a different schema. They are not yet browser-verified; treat the columns as a starting point and harden them in Phase 4.
+Each is the same stack with a different schema. Treat the columns as a starting point and harden them in Phase 4.
 
-### 4. Agent trace replay
+### 6. Agent trace replay
 
-**Intent.** Step through a recorded agent run — prompt, tool calls, tool results, model output per turn — and annotate where it went wrong, then let the terminal re-run a single turn with a tweak and diff the outcome.
+**Intent.** Step through a recorded agent run — prompt, tool calls, results, output per turn — annotate where it went wrong, and let the terminal re-run a single turn with a tweak.
 
-**Data model.**
+**Data model.** `traces(id, label, model, created_at, status)`; `steps(id, trace_id→traces, idx, role, kind, content, tokens, latency_ms, flagged, human_note)` with `kind` in `prompt | tool_call | tool_result | output`; `events`.
 
-- `traces(id, label, model, created_at, status)` — one recorded run.
-- `steps(id, trace_id→traces, idx, role, kind, content, tokens, latency_ms, flagged, human_note)` — one row per turn; `kind` is `prompt | tool_call | tool_result | output`, `content` is markdown/JSON, `flagged` + `human_note` are the human's columns. `idx` orders the replay.
-- `events` — shared activity log (same shape as recipe 1).
+**Layout.** Trace picker, vertical step timeline (Collapsible per step), a latency/token bar chart, activity log.
 
-**Layout.** A trace picker, a vertical step timeline (collapsed chips that expand to the full content sheet), a per-step latency/token sparkline (Chart.js), an activity log.
+**Terminal ingests.** `POST /claude/trace` loads a run (steps as JSON); `POST /claude/rerun-step` pushes a re-executed turn beside the original; `GET /claude/flags` reads back the human's flagged steps.
 
-**Terminal ingests.** `POST /claude/trace` to load a recorded run (steps as a JSON array); `POST /claude/rerun-step` to push a re-executed turn's new output alongside the original for a side-by-side diff. Reads back `GET /claude/flags` to see which steps the human flagged.
+### 7. Refactor cockpit
 
-### 5. Refactor cockpit
+**Intent.** Drive a large mechanical refactor across many files: see every call site, mark each reviewed/approved, watch progress as the terminal edits.
 
-**Intent.** Drive a large mechanical refactor (a rename, an API migration) across many files: see every call site, mark each reviewed/approved, and let the terminal report progress as it edits.
+**Data model.** `sites(id, file, line, before, after, status, human_note)` with `status` in `pending | applied | reviewed | skipped` (`before`/`after` render via `CodeBlock`); `files(id, path, n_sites, n_done)` rollup; `events`.
 
-**Data model.**
+**Layout.** File-progress board (per-file done/total bars), call-site list filterable by status (before→after side by side), overall progress donut.
 
-- `sites(id, file, line, before, after, status, human_note)` — one row per call site; `status` is `pending | applied | reviewed | skipped`. `before`/`after` are code snippets (highlight.js renders them).
-- `files(id, path, n_sites, n_done)` — denormalized rollup per file for the progress board.
-- `events` — shared log.
+**Terminal ingests.** `POST /claude/site` registers/updates a call site as the agent edits (`pending → applied`); the human flips `applied → reviewed`; `GET /claude/pending` returns the human's skips so the agent doesn't re-touch them.
 
-**Layout.** A file-progress board (per-file bars: done/total), a call-site list filterable by status (before→after side-by-side with syntax highlighting), an overall progress doughnut.
+### 8. Prompt / skill lab
 
-**Terminal ingests.** `POST /claude/site` to register or update a call site as Claude applies the edit (`pending → applied`); the human flips `applied → reviewed`. `GET /claude/pending` lets Claude pull the human's skips so it doesn't re-touch them.
+**Intent.** Iterate on a prompt or skill: keep every version, run each against a fixed sample set, compare outputs side by side, rate by hand.
 
-### 6. Data-cleanup workbench
+**Data model.** `versions(id, label, body, parent_id, created_at)` (lineage via `parent_id`); `samples(id, input, gold)`; `outputs(id, version_id→versions, sample_id→samples, text, rating, human_note, created_at)` with `rating` in `good | meh | bad`; `events`.
 
-**Intent.** Triage a dirty dataset: surface the rows a profiling pass flagged, propose a fix per issue, and accept/reject each fix by hand while the terminal applies the accepted ones.
+**Layout.** Version lineage rail, output matrix (version columns × sample rows, rated inline via `SegmentedControl`), per-version score donut.
 
-**Data model.**
+**Terminal ingests.** `POST /claude/version` registers a revision; `POST /claude/output` pushes a (version, sample) output; `GET /claude/ratings` returns the human's scores so the terminal knows which version is winning.
 
-- `issues(id, row_ref, column, rule, severity, original, proposed, decision, human_note)` — one flagged cell; `rule` is the quality check that fired (`null | dup | format | range | enum`), `proposed` is the suggested fix, `decision` is `pending | accept | reject | edit`.
-- `rules(id, name, n_flagged, n_accepted)` — rollup per quality rule.
-- `events` — shared log.
+### 9. Architecture decision board
 
-**Layout.** A rule-summary strip (how many cells each rule flagged), an issue queue grouped by column (original → proposed, with an accept/reject/edit control per row), an accepted-fixes counter.
+**Intent.** Work a set of open architecture decisions toward resolution: options, tradeoffs, status; the human picks, the terminal supplies the analysis.
 
-**Terminal ingests.** `POST /claude/profile` to load a profiling run (issues as JSON); `POST /claude/apply` to confirm an accepted fix was written back to the source. `GET /claude/decisions` returns the human's accept/reject calls so the terminal applies exactly what was approved.
+**Data model.** `decisions(id, title, context, status, chosen_option_id, created_at)` with `status` in `open | discussing | decided | superseded`; `options(id, decision_id→decisions, title, body, pros, cons)` (markdown); `comments(id, decision_id→decisions, source, body, created_at)`; `events`.
 
-### 7. Prompt / skill lab
+**Layout.** Decision board (cards by status), per-decision `Dialog` (context + option cards + comment thread), decided-count summary.
 
-**Intent.** Iterate on a prompt or skill: keep every version, run each against a fixed sample set, and compare outputs side-by-side while rating them by hand.
+**Terminal ingests.** `POST /claude/option` adds an analyzed option; `POST /claude/comment` adds analysis to a thread; the human's pick sets `chosen_option_id` and flips `status`; `GET /claude/open-decisions` returns what still needs analysis.
 
-**Data model.**
+### 10. Incident timeline builder
 
-- `versions(id, label, body, parent_id, created_at)` — one prompt revision; `parent_id` threads the lineage.
-- `samples(id, input, gold)` — the fixed evaluation inputs.
-- `outputs(id, version_id→versions, sample_id→samples, text, rating, human_note, created_at)` — one model output per (version × sample); `rating` is the human's score (`good | meh | bad`).
-- `events` — shared log.
+**Intent.** Assemble a postmortem timeline from scattered signals; the human curates the narrative while the terminal feeds raw signals in.
 
-**Layout.** A version lineage rail, a sample grid, an output matrix (version columns × sample rows, each cell rated inline), a per-version score doughnut.
+**Data model.** `incidents(id, title, severity, started_at, resolved_at, status)`; `timeline(id, incident_id→incidents, at, source, kind, summary, detail, included, human_note)` with `kind` in `alert | deploy | action | observation | root-cause` and `included` marking the official story; `events`.
 
-**Terminal ingests.** `POST /claude/version` to register a new prompt revision; `POST /claude/output` to push the model's output for a (version, sample) pair. `GET /claude/ratings` returns the human's scores so the terminal knows which version is winning.
+**Layout.** Incident header, chronological timeline (Badge chips by `kind`, toggle `included`), root-cause `Dialog`, contributing-factors summary.
 
-### 8. Architecture decision board
+**Terminal ingests.** `POST /claude/signal` pushes a raw signal; `POST /claude/root-cause` posts a drafted analysis; `GET /claude/curated` returns the human's `included` set so the terminal renders the final postmortem from exactly the kept events.
 
-**Intent.** Work a set of open architecture decisions toward resolution: each decision has options, tradeoffs, and a status; the human picks, the terminal supplies the analysis behind each option.
+### 11. Migration planner
 
-**Data model.**
+**Intent.** Plan and sequence a multi-step migration: dependencies and status per step; the human approves the order, the terminal reports as it executes.
 
-- `decisions(id, title, context, status, chosen_option_id, created_at)` — one ADR-in-progress; `status` is `open | discussing | decided | superseded`.
-- `options(id, decision_id→decisions, title, body, pros, cons)` — one candidate per decision; `body`/`pros`/`cons` are markdown.
-- `comments(id, decision_id→decisions, source, body, created_at)` — threaded discussion; `source` is `human | claude`.
-- `events` — shared log.
+**Data model.** `steps(id, title, body, status, risk, est_effort, human_note)` with `status` in `blocked | ready | in-progress | done`; `deps(step_id→steps, depends_on→steps)` — a topological sort over this gives the safe order, and a step is `ready` only when every dependency is `done`; `events`.
 
-**Layout.** A decision board (cards by status), a per-decision detail sheet (context + option cards with pros/cons + comment thread), a decided-count summary.
+**Layout.** Dependency graph (`<Mermaid>` rendered from `deps`), ready-queue board, per-step detail, progress donut.
 
-**Terminal ingests.** `POST /claude/option` to add an analyzed option to a decision; `POST /claude/comment` to add Claude's analysis to a thread. The human picks via an htmx POST that sets `chosen_option_id` and flips `status → decided`. `GET /claude/open-decisions` lets the terminal pull what still needs analysis.
-
-### 9. Incident timeline builder
-
-**Intent.** Assemble a postmortem timeline from scattered signals: each event gets a timestamp, a source, and a classification; the human curates the narrative while the terminal feeds raw signals in.
-
-**Data model.**
-
-- `incidents(id, title, severity, started_at, resolved_at, status)` — the incident.
-- `timeline(id, incident_id→incidents, at, source, kind, summary, detail, included, human_note)` — one signal; `kind` is `alert | deploy | action | observation | root-cause`, `included` is whether the human kept it in the official narrative, `detail` is markdown.
-- `events` — shared log (meta-narration, distinct from the incident timeline itself).
-
-**Layout.** An incident header (severity, duration, status), a chronological timeline (chips by `kind`, toggle `included` to build the official story), a root-cause sheet, a contributing-factors summary.
-
-**Terminal ingests.** `POST /claude/signal` to push a raw signal (from logs, deploy history, alerts) onto the timeline; `POST /claude/root-cause` to post a drafted root-cause analysis. `GET /claude/curated` returns the human's `included` selections so the terminal can render the final postmortem from exactly the kept events.
-
-### 10. Migration planner
-
-**Intent.** Plan and sequence a multi-step migration (a framework upgrade, a datastore move): each step has dependencies and a status; the human approves the order, the terminal reports as it executes.
-
-**Data model.**
-
-- `steps(id, title, body, status, risk, est_effort, human_note)` — one migration step; `status` is `blocked | ready | in-progress | done`, `body` is markdown.
-- `deps(step_id→steps, depends_on→steps)` — the dependency edges; a topological sort over this gives the safe order, and a step is `ready` only when every `depends_on` is `done`.
-- `events` — shared log.
-
-**Layout.** A dependency graph (mermaid, rendered from `deps`), a ready-queue board (steps unblocked right now), a per-step detail sheet, an overall progress doughnut.
-
-**Terminal ingests.** `POST /claude/step` to register or update a step (and its deps); `POST /claude/step-status` to report execution progress (`ready → in-progress → done`), which can unblock downstream steps server-side. `GET /claude/approved-order` returns the human's confirmed sequence so the terminal executes in the agreed order.
-
----
+**Terminal ingests.** `POST /claude/step` registers/updates a step and its deps; `POST /claude/step-status` reports execution progress and unblocks downstream server-side; `GET /claude/approved-order` returns the human's confirmed sequence.
 
 ## Picking and bending a recipe
 
-- **Match on the relationship, not the domain.** A "list of independent items each with a human verdict and a terminal result" is recipe 1's shape whether the items are eval cases, lint findings, or moderation queue entries. A "set of things that collide on a shared dimension" is recipe 2's shape whether the dimension is files, time slots, or owners — and the `GROUP BY ... HAVING n > 1` collision query transfers directly.
-- **Every mutated table is an SSE target.** When you add a column a human or the agent writes, ask: which `publish()` target does this change invalidate, and which `GET /partials/<region>` re-renders it? If the answer is "none," it is not part of the live surface.
-- **Keep the two-way loop.** The thing that separates a workbench from a generated dashboard is the human→agent channel (recipe 2's `requests` table; recipe 1's `/claude/feedback` read-back). If the terminal only writes and the human only reads, you have built a dashboard — add the channel that lets the human steer and the agent answer in the same room.
-- **`events` is free narration.** Every recipe carries the same `events(source, message, created_at)` table and `log_event()` helper. It costs almost nothing and makes "who did what, when" legible across both surfaces — keep it.
+- **Match on the relationship, not the domain.** A "list of independent items each with a human verdict and a terminal result" is recipe 1's shape whether the items are eval cases, lint findings, or moderation entries. A "set of things that collide on a shared dimension" is recipe 3's shape whether the dimension is files, time slots, or owners — the `GROUP BY ... HAVING n > 1` query transfers directly. "Anchor a note to a span of a fixed artifact" is recipe 2's shape for any reviewable text.
+- **Every mutated table is an SSE target.** When you add a column a human or the agent writes, ask: which `publish()` target does this change invalidate, and which region re-renders it? If the answer is "none," it is not part of the live surface.
+- **Keep the two-way loop.** What separates a workbench from a generated dashboard is the human→agent channel (`requests` + queue/respond, or a read-back like `/claude/feedback`). If the terminal only writes and the human only reads, you built a dashboard — add the channel.
+- **`events` is free narration.** Every recipe carries the same append-only `events` table. It costs almost nothing and makes "who did what, when" legible across both surfaces — keep it.
