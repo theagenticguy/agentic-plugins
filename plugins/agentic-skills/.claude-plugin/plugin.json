@@ -1,6 +1,6 @@
 {
   "name": "agentic-skills",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Flagship skills for AI coding agents. Includes workbench-builder: disposable localhost Bun.serve + bun:sqlite + React 19 + Astryx workbenches with a two-way human↔agent loop over SSE — eval viewers, PR review rooms, document-redline surfaces, grid/spreadsheet editors, multi-surface triage queues, and trace replays, with zero build config and no deploy.",
   "author": {
     "name": "Laith Al-Saadoon"
