@@ -7,13 +7,20 @@ import { echarts, type EChartsOption } from "../charts";
  * `notMerge: true` replaces the whole option, so builders stay pure functions
  * of the region rows — a fresh object identity per render is the update
  * mechanism. Width comes from the container; height is a fixed prop.
+ *
+ * ECharts paints to a canvas, which exposes nothing to the accessibility tree.
+ * `label` is required so every chart carries the numbers in text: it becomes the
+ * accessible name of a role="img" wrapper, and it must restate the data, not the
+ * chart type.
  */
 export function Chart({
   option,
+  label,
   height = 260,
   testid,
 }: {
   readonly option: EChartsOption;
+  readonly label: string;
   readonly height?: number;
   readonly testid?: string;
 }) {
@@ -37,5 +44,13 @@ export function Chart({
     chartRef.current?.setOption(option, { notMerge: true });
   }, [option]);
 
-  return <div ref={ref} data-testid={testid} style={{ width: "100%", height }} />;
+  return (
+    <div
+      ref={ref}
+      role="img"
+      aria-label={label}
+      data-testid={testid}
+      style={{ width: "100%", height }}
+    />
+  );
 }

@@ -2,6 +2,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -34,6 +35,7 @@ export function Fleet({ onOpen }: { readonly onOpen: (id: number) => void }) {
     // minWidth:0 — a grid item defaults to min-width:auto and would refuse to
     // shrink below its longest branch name, pushing the whole board wide.
     <VStack gap={2} data-testid="fleet" style={{ minWidth: 0 }}>
+      <Heading level={2}>Pull requests</Heading>
       {prs.map((pr) => (
         <Card key={pr.id} data-testid="fleet-card">
           <VStack gap={1.5}>
@@ -47,10 +49,10 @@ export function Fleet({ onOpen }: { readonly onOpen: (id: number) => void }) {
             </HStack>
 
             <HStack gap={2} vAlign="center" wrap="wrap">
-              <Text size="xsm" color="secondary">
+              <Text type="supporting">
                 {pr.author} · {pr.branch}
               </Text>
-              <Text size="xsm" color="secondary" hasTabularNumbers>
+              <Text type="supporting" hasTabularNumbers>
                 {pr.n_files} file{pr.n_files === 1 ? "" : "s"}
               </Text>
               <Churn
@@ -70,14 +72,16 @@ export function Fleet({ onOpen }: { readonly onOpen: (id: number) => void }) {
               {pr.n_warn > 0 && <Badge variant="warning" label={`${pr.n_warn} warn`} />}
               {pr.n_nit > 0 && <Badge variant="neutral" label={`${pr.n_nit} nit`} />}
               {pr.n_blocker + pr.n_warn + pr.n_nit === 0 && (
-                <Text size="xsm" color="secondary">
-                  no open concerns
-                </Text>
+                <Text type="supporting">no open concerns</Text>
               )}
+              {/* aria-label, not the visible label: every card offers a button
+                  reading "detail", and a control list read out of context has to
+                  say which PR each one opens. */}
               <Button
                 size="sm"
                 variant="ghost"
                 label="detail"
+                aria-label={`Review detail for pull request #${pr.number}`}
                 onClick={() => onOpen(pr.id)}
               />
             </HStack>

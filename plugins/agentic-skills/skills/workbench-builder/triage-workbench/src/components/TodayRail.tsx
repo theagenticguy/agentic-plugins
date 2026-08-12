@@ -1,10 +1,9 @@
+import { Fragment } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Heading } from "@astryxdesign/core/Heading";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
-import { VStack } from "@astryxdesign/core/VStack";
 import { useRegion } from "../useRegion";
 import type { Item, Source } from "../types";
 
@@ -31,23 +30,39 @@ export function TodayRail() {
 
   return (
     <Card data-testid="today">
-      <Heading level={3}>Next 24 hours</Heading>
+      <Heading level={2}>Next 24 hours</Heading>
       {items !== null && items.length === 0 ? (
         <EmptyState title="Nothing due" description="No open item lands today." isCompact />
       ) : (
-        <VStack gap={1}>
+        // One grid across every row, not a stack of wrapping rows: the clock and
+        // the badge get their own columns, so a title too long for one line wraps
+        // inside its own cell instead of dropping below the time it belongs to.
+        // `minmax(0, 1fr)` is what lets that cell shrink; `1fr` alone floors at
+        // the longest title and pushes the rail past the column.
+        // The clock is the schedule and the title is the commitment — both are
+        // the row's data, so both read at body size, and the title wraps
+        // unbounded: a line cap would hide the rest of a subject behind a hover
+        // tooltip, which a keyboard or screen-reader user never reaches. The rail
+        // only ever holds what is due inside 24h, so it cannot run long.
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "max-content max-content minmax(0, 1fr)",
+            columnGap: 8,
+            rowGap: 6,
+            alignItems: "baseline",
+          }}
+        >
           {(items ?? []).map((item) => (
-            <HStack key={item.id} gap={2} vAlign="center" wrap="wrap">
-              <Text size="sm" color="secondary" hasTabularNumbers>
+            <Fragment key={item.id}>
+              <Text color="secondary" hasTabularNumbers>
                 {item.due_at === null ? "--:--" : clock(item.due_at)}
               </Text>
               <Badge variant={SOURCE_BADGE[item.source]} label={item.source} />
-              <Text size="sm" maxLines={2}>
-                {item.title}
-              </Text>
-            </HStack>
+              <Text>{item.title}</Text>
+            </Fragment>
           ))}
-        </VStack>
+        </div>
       )}
     </Card>
   );

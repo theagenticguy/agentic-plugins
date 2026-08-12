@@ -1,10 +1,11 @@
 /**
  * PR review room — the reference workbench for a multi-PR change-set.
  *
- * Not a diff viewer: a synthesis surface. Four tables (prs, pr_files,
- * concerns, requests) whose whole point is the collisions query — a
- * GROUP BY path HAVING n > 1 over pr_files answers a question about the
- * SET of PRs that no single PR page can answer.
+ * Not a diff viewer: a synthesis surface. Its core tables (prs, pr_files,
+ * concerns, requests) exist for the collisions query — a GROUP BY path
+ * HAVING n > 1 over pr_files answers a question about the SET of PRs that no
+ * single PR page can answer. `events` + `agent_watermark` carry the
+ * wake-on-work loop: the reviewer's verdicts become the agent's work order.
  *
  * Bun.serve + bun:sqlite + SSE invalidation. 127.0.0.1 only.
  * Run: `bun --hot server.ts`
@@ -66,6 +67,20 @@ db.exec(`
     resolved INTEGER NOT NULL DEFAULT 0
   );
 
+  -- The activity log the wake-on-work digest walks. Every browser mutation
+  -- lands one actor-attributed row; the digest reports only human rows, so
+  -- the agent's own ingests and answers never wake it. pr_id is a plain
+  -- integer, not a foreign key: the log is an audit trail that outlives the
+  -- rows it describes, and a CASCADE would erase the reason a PR moved.
+  CREATE TABLE IF NOT EXISTS events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT NOT NULL,                  -- ingest | state | concern | respond
+    detail     TEXT NOT NULL DEFAULT '',
+    pr_id      INTEGER,
+    actor      TEXT NOT NULL DEFAULT 'human',  -- human | agent
+    created_at TEXT NOT NULL
+  );
+
   -- The human→agent channel. kind extends the standard set with PR verbs.
   CREATE TABLE IF NOT EXISTS requests (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,12 +93,41 @@ db.exec(`
     answered_at TEXT
   );
 
+  -- The agent's read cursor into events. Everything at or below last_event_id
+  -- is processed; /claude/digest reports only what lies past it, so a wake-up
+  -- never re-processes a batch (exactly-once per event).
+  CREATE TABLE IF NOT EXISTS agent_watermark (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    last_event_id INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE INDEX IF NOT EXISTS idx_pr_files_path ON pr_files(path);
   CREATE INDEX IF NOT EXISTS idx_pr_files_pr   ON pr_files(pr_id);
   CREATE INDEX IF NOT EXISTS idx_concerns_pr   ON concerns(pr_id);
 `);
 
 const now = () => new Date().toISOString();
+
+// A session .db can predate a column (CREATE TABLE IF NOT EXISTS never alters).
+// Ensure additive columns exist so a --hot restart on an old file doesn't 500.
+function ensureColumn(table: string, column: string, ddl: string) {
+  const cols = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn("events", "actor", "actor TEXT NOT NULL DEFAULT 'human'");
+
+/** The one log-write path. Every mutation route calls it with its own actor, so
+ *  attribution can never be forgotten on one branch and set on another. */
+function logEvent(
+  kind: string,
+  detail: string,
+  pr_id: number | null,
+  actor: "human" | "agent",
+): void {
+  db.query(
+    "INSERT INTO events (kind, detail, pr_id, actor, created_at) VALUES (?, ?, ?, ?, ?)",
+  ).run(kind, detail, pr_id, actor, now());
+}
 
 // ---------------------------------------------------------------------------
 // Ingest — the ONE write path for a whole analyzed PR. Shared by the seed and
@@ -410,6 +454,7 @@ Draft until the deprecation notice clears its 90-day window on 2026-09-04.`,
     },
   ];
   for (const pr of SEED) ingestPr(pr);
+  logEvent("ingest", `analyzed ${SEED.length} PRs`, null, "agent");
   db.query(
     "INSERT INTO requests (kind, body, pr_id, status, response, created_at, answered_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
   ).run(
@@ -423,6 +468,16 @@ Draft until the deprecation notice clears its 90-day window on 2026-09-04.`,
     now(),
     now(),
   );
+}
+
+// First boot of the watermark starts at the current head of the log: history
+// before the watcher existed is already-handled work, not a pending batch.
+{
+  const wm = db.query("SELECT COUNT(*) AS n FROM agent_watermark").get() as { n: number };
+  if (wm.n === 0) {
+    const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM events").get() as { m: number };
+    db.query("INSERT INTO agent_watermark (id, last_event_id) VALUES (1, ?)").run(head.m);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -609,10 +664,14 @@ const server = Bun.serve({
         if (!["open", "draft", "approved", "changes"].includes(state)) {
           return Response.json({ error: "bad state" }, { status: 400 });
         }
-        const r = db
-          .query("UPDATE prs SET state = ?, updated_at = ? WHERE id = ?")
-          .run(state, now(), id);
-        if (r.changes === 0) return Response.json({ error: "unknown pr" }, { status: 404 });
+        const pr = db.query("SELECT number FROM prs WHERE id = ?").get(id) as
+          | { number: number }
+          | null;
+        if (!pr) return Response.json({ error: "unknown pr" }, { status: 404 });
+        db.query("UPDATE prs SET state = ?, updated_at = ? WHERE id = ?").run(state, now(), id);
+        // A verdict is the human's half of the loop: logged so the wake-on-work
+        // digest can hand the agent the batch of PRs the reviewer just moved.
+        logEvent("state", `#${pr.number} → ${state}`, id, "human");
         // The state string is inside the collisions GROUP_CONCAT chips, so the
         // rail is stale too — publishing only "fleet" would freeze the chips.
         publish("fleet", "collisions", "overview", `pr-${id}`);
@@ -625,11 +684,20 @@ const server = Bun.serve({
       POST: async (req) => {
         const id = Number(req.params.id);
         const { resolved } = (await req.json()) as { resolved: boolean };
-        const row = db.query("SELECT pr_id FROM concerns WHERE id = ?").get(id) as
-          | { pr_id: number }
-          | null;
+        const row = db
+          .query(
+            `SELECT c.pr_id, c.title, c.severity, p.number
+             FROM concerns c JOIN prs p ON p.id = c.pr_id WHERE c.id = ?`,
+          )
+          .get(id) as { pr_id: number; title: string; severity: string; number: number } | null;
         if (!row) return Response.json({ error: "unknown concern" }, { status: 404 });
         db.query("UPDATE concerns SET resolved = ? WHERE id = ?").run(resolved ? 1 : 0, id);
+        logEvent(
+          "concern",
+          `#${row.number} ${row.severity} ${resolved ? "resolved" : "reopened"}: ${row.title}`,
+          row.pr_id,
+          "human",
+        );
         publish("fleet", "overview", `pr-${row.pr_id}`);
         return Response.json({ ok: true });
       },
@@ -643,6 +711,12 @@ const server = Bun.serve({
           return Response.json({ error: "number and title required" }, { status: 400 });
         }
         const { id, created } = ingestPr(body);
+        logEvent(
+          "ingest",
+          `#${body.number} ${created ? "analyzed" : "re-analyzed"}: ${body.title}`,
+          id,
+          "agent",
+        );
         // Every region an ingest can move. collisions is the point: a new PR
         // touching a seeded hot file adds a rail row with no reload.
         publish("fleet", "collisions", "overview", `pr-${id}`);
@@ -703,8 +777,60 @@ const server = Bun.serve({
         db.query(
           "UPDATE requests SET status = 'answered', response = ?, answered_at = ? WHERE id = ?",
         ).run(response, now(), request_id);
+        logEvent("respond", `request #${request_id} answered`, row.pr_id, "agent");
         publish("queue", "overview");
         if (row.pr_id !== null) publish(`pr-${row.pr_id}`);
+        return Response.json({ ok: true });
+      },
+    },
+
+    // The agent's work order, printed by scripts/wait-for-work.ts at wake-up:
+    // the human's verdicts and concern flips past the watermark, the concerns
+    // still standing, and any queued requests — so the agent starts with the
+    // batch already framed. Agent events are excluded: the agent's own ingests
+    // and answers must not wake it.
+    "/claude/digest": () => {
+      const { last_event_id } = db
+        .query("SELECT last_event_id FROM agent_watermark WHERE id = 1")
+        .get() as { last_event_id: number };
+      const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM events").get() as {
+        m: number;
+      };
+      return Response.json({
+        watermark: last_event_id,
+        latest_event_id: head.m,
+        events: db
+          .query(
+            `SELECT e.*, p.number AS pr_number
+             FROM events e LEFT JOIN prs p ON p.id = e.pr_id
+             WHERE e.id > ? AND e.actor = 'human' ORDER BY e.id`,
+          )
+          .all(last_event_id),
+        open_concerns: db
+          .query(
+            `SELECT c.id, c.pr_id, p.number AS pr_number, c.severity, c.title, c.path
+             FROM concerns c JOIN prs p ON p.id = c.pr_id
+             WHERE c.resolved = 0
+             ORDER BY CASE c.severity WHEN 'blocker' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, c.id`,
+          )
+          .all(),
+        queued_requests: db
+          .query("SELECT * FROM requests WHERE status = 'queued' ORDER BY id")
+          .all(),
+      });
+    },
+
+    // Agent advances its cursor after processing a batch. Skipping this makes
+    // the next wake-up replay the same events.
+    "/claude/watermark": {
+      POST: async (req) => {
+        const { last_event_id } = (await req.json()) as { last_event_id: number };
+        if (!Number.isFinite(Number(last_event_id))) {
+          return Response.json({ error: "last_event_id must be a number" }, { status: 400 });
+        }
+        db.query("UPDATE agent_watermark SET last_event_id = ? WHERE id = 1").run(
+          Number(last_event_id),
+        );
         return Response.json({ ok: true });
       },
     },

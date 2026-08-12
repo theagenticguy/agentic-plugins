@@ -90,30 +90,35 @@ export const STATUS_COLORS: Record<string, string> = {
   failed: "#9a3b33",
 };
 
-// Graphite's MONO_STACK verbatim. Every chart label is mono at 11px
-// (= Graphite --text-2xs), the convention the Graphite ECharts adapter sets:
-// data reads in the structural face, never the body sans.
+// Graphite's MONO_STACK verbatim: data reads in the structural face, never the
+// body sans.
 const MONO_STACK = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+
+// 12px = Graphite --font-size-xs, the smallest step in the ramp and the floor for
+// anything a reader has to decode. Canvas text is invisible to a DOM font-size
+// census, so this literal is the only thing holding that floor for chart labels.
+const LABEL_PX = 12;
 
 const CHART_TEXT = {
   color: INK,
   fontFamily: MONO_STACK,
-  fontSize: 11,
+  fontSize: LABEL_PX,
 };
 
 /** Axis labels sit on --ink-low, one rung quieter than the data. */
-const AXIS_LABEL = { color: MUTED_TEXT, fontFamily: MONO_STACK, fontSize: 11 };
+const AXIS_LABEL = { color: MUTED_TEXT, fontFamily: MONO_STACK, fontSize: LABEL_PX };
 
 /**
- * Legend, Graphite-style: roundRect swatches at 11x11 (matching the 11px label),
- * inactive entries fade to the hairline colour rather than disappearing.
+ * Legend, Graphite-style: square roundRect swatches sized to the label text, so
+ * the swatch and its name share one optical line. Inactive entries fade to the
+ * hairline colour rather than disappearing.
  */
 const LEGEND = {
-  textStyle: { color: "#3b4753", fontFamily: MONO_STACK, fontSize: 11 }, // --ink-mute
+  textStyle: { color: "#3b4753", fontFamily: MONO_STACK, fontSize: LABEL_PX }, // --ink-mute
   inactiveColor: SPLIT_LINE,
   icon: "roundRect",
-  itemWidth: 11,
-  itemHeight: 11,
+  itemWidth: LABEL_PX,
+  itemHeight: LABEL_PX,
 } as const;
 
 /**
@@ -126,7 +131,7 @@ const TOOLTIP = {
   borderColor: SPLIT_LINE,
   borderWidth: 1,
   padding: [8, 11],
-  textStyle: { color: INK, fontFamily: MONO_STACK, fontSize: 12 },
+  textStyle: { color: INK, fontFamily: MONO_STACK, fontSize: 13 },
   extraCssText: "box-shadow:0 6px 22px rgba(8,14,22,0.12);border-radius:4px;",
 } as const;
 

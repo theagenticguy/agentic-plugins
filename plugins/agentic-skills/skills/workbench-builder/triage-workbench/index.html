@@ -36,6 +36,42 @@
          on the same element. Two workbenches open side-by-side are told apart by
          this one rule. -->
     <style>[data-astryx-theme="graphite"] { --wb-header-accent: #6a3f76; }</style>
+    <!-- Body baseline. <Theme> renders a `display:contents` wrapper, so nothing
+         in the React tree can paint the page canvas or set the document font —
+         without this rule the page is white with Times New Roman leaking into
+         any unstyled text node. The selector is a descendant of the themed root
+         so the Graphite custom properties are in scope and resolve; reset.css
+         already zeroes the margin, and this restates it because the rule owns
+         the page canvas.
+         `.wb-sr-only` is the visually-hidden class the live regions use: read by
+         a screen reader, absent from the layout, and still focusable-safe. -->
+    <style>
+      [data-astryx-theme="graphite"] body {
+        margin: 0;
+        background: var(--color-background-body);
+        font-family: var(--font-family-body);
+        color: var(--color-text-primary);
+      }
+      [data-astryx-theme="graphite"] .wb-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
+      /* Astryx's TextArea signals focus by neither outline nor border colour, so
+         a keyboard user cannot see where they are. The ring goes on the wrapper
+         rather than the <textarea> so it traces the full control including its
+         1px frame; `:has` keys it to the inner field's focus-visible state. */
+      [data-astryx-theme="graphite"] .astryx-textarea:has(textarea:focus-visible) {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
+      }
+    </style>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%236a3f76'/></svg>" />
   </head>
   <body>

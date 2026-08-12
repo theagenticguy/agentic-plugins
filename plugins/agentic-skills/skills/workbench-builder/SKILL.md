@@ -66,6 +66,7 @@ metadata:
 | `templates/package.json`        | The exact-pinned dependency manifest copied into every workbench                                     |
 | `templates/graphite-theme/`     | Canonical Graphite theme — `defineTheme` source, built CSS/JS, the `@font-face` fallback             |
 | `templates/terminal-helper.ts`  | Zero-dependency bun script the terminal/agent runs to act on shared state and close the loop         |
+| `templates/wait-for-work.ts`    | Wake-on-work watcher — blocks on the SSE stream, exits with a digest when the human hands off work   |
 | `templates/worklog-skeleton.md` | Per-phase worklog with the write-protocol block embedded and a `Status: IN PROGRESS` line            |
 
 # Workbench builder
@@ -117,6 +118,7 @@ Bun.serve + `bun:sqlite` + React 19 + Astryx, bound to `127.0.0.1`, run with `bu
 
 - **SSE is an invalidation signal, not data transport.** A state change emits a tiny NAMED event (`event: <region>\ndata: stale`). One module-level `EventSource` feeds the `useRegion` hook; each named event refetches exactly that region's JSON from `/api/regions/<region>` and React re-renders. A `publish(...regions)` fan-out backs it server-side. The region name must be identical in three places — `publish()`, the wire, `useRegion()` — or the panel silently freezes. (See `references/architecture.md`.)
 - **The two-way loop is what makes it a workbench, not a dashboard.** Human acts in the browser; terminal/agent acts via zero-dependency `bun run` scripts; both hit the SAME JSON endpoints over one SQLite file. The human→agent channel — a `requests` table plus `/claude/queue` (pull is claiming) and `/claude/respond` — closes the loop so the human steers and the agent answers, both watching the same state live.
+- **Wake-on-work removes the "now go tell the agent" step.** An LLM agent cannot be pushed to, but it can block on a wait: `templates/wait-for-work.ts` runs as a background command and exits with a work-order digest when the human clicks "Hand batch to agent" (immediate) or stops editing for a quiet period (debounce). An `agent_watermark` cursor over the actor-attributed event log makes each batch exactly-once and keeps the agent's own writes from waking it. (See `references/architecture.md`.)
 - **Astryx components are queried, never recalled.** Before writing JSX, ground every component's props with `bunx astryx component <Name> --json` (offline, reads the installed manifest). Astryx is beta — a guessed prop renders nothing or throws.
 
 ## When NOT to use this skill

@@ -13,7 +13,10 @@ import { useSseStatus } from "./useRegion";
 export function App() {
   const sse = useSseStatus();
   return (
-    <VStack gap={3} padding={4}>
+    // as="main" gives the page its one landmark, so AT can skip straight to the
+    // grid. Section headings are level 2 directly under the level-1 title —
+    // skipping a level breaks the outline screen readers navigate by.
+    <VStack as="main" gap={3} padding={4}>
       <HStack gap={2} vAlign="center">
         <Heading level={1}>Grid workbench</Heading>
         <StatusDot
@@ -47,7 +50,7 @@ export function App() {
               <Grid />
             </Card>
             <Card>
-              <Heading level={3}>Cell edits</Heading>
+              <Heading level={2}>Cell edits</Heading>
               <EditLog />
             </Card>
           </VStack>
@@ -55,11 +58,11 @@ export function App() {
         <div style={{ minWidth: 0 }}>
           <VStack gap={3}>
             <Card>
-              <Heading level={3}>Ask the agent</Heading>
+              <Heading level={2}>Ask the agent</Heading>
               <Queue />
             </Card>
             <VStack gap={2}>
-              <Heading level={3}>Column stats</Heading>
+              <Heading level={2}>Column stats</Heading>
               <ColumnStats />
             </VStack>
           </VStack>

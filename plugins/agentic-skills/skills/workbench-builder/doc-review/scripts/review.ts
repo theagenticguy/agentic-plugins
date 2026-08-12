@@ -11,6 +11,9 @@
  * Workflow: `list` the open annotations, edit the real source document to
  * address each, then `resolve` with a reply — the reviewer's page updates
  * live and the highlight clears.
+ *
+ * Transitions go through /claude, which logs them as agent work: an agent
+ * resolve must not wake the wake-on-work watcher.
  */
 const BASE = "http://127.0.0.1:5057";
 
@@ -56,12 +59,12 @@ switch (cmd) {
   case "wontfix": {
     const [id, reply = ""] = args;
     const status = cmd === "resolve" ? "resolved" : "wontfix";
-    await post(`/api/annotations/${id}/status`, { status, reply });
+    await post(`/claude/annotations/${id}/status`, { status, reply });
     console.log(`#${id} → ${status}`);
     break;
   }
   case "reopen": {
-    await post(`/api/annotations/${args[0]}/status`, { status: "open" });
+    await post(`/claude/annotations/${args[0]}/status`, { status: "open" });
     console.log(`#${args[0]} → open`);
     break;
   }

@@ -91,11 +91,15 @@ export const graphiteTheme = defineTheme({
   name: 'graphite',
 
   /**
-   * Type. Base 14px / ratio 1.2 reproduces Graphite's SCALE ramp exactly at the
-   * anchors that matter: --font-size-base lands on 0.875rem (= Graphite
-   * --text-base) and --font-size-sm on 0.75rem (= --text-xs). Sans carries body
-   * and code is the mono stack; headings ride the serif display face, which is
-   * where Graphite spends its one typographic flourish.
+   * Type. The scale config keeps Graphite's ratio; the reading sizes are pinned
+   * one step above Graphite's print-dense ramp in the explicit tokens below
+   * (base 1rem, sm 0.875rem, xs 0.75rem). Graphite's 14px base is sized for
+   * marketing pages read at arm's length; a workbench is a data surface the
+   * human stares at for a session, and 12px supporting text on a retina laptop
+   * reads as fine print. WCAG 1.4.4 aside, the floor of the pinned ramp is
+   * 12px. Sans carries body and code is the mono stack; headings ride the
+   * serif display face, which is where Graphite spends its one typographic
+   * flourish.
    */
   typography: {
     scale: {base: 14, ratio: 1.2},
@@ -323,6 +327,16 @@ export const graphiteTheme = defineTheme({
     '--color-text-gray': ['#1c232b', '#cdd7e0'], // --ink-soft
 
     // =======================================================================
+    // Type ramp — pinned on top of the scale ladder, same mechanism as the
+    // radius set below. One step above Graphite's print-dense ramp: body data
+    // reads at 16px, labels at 14px, and nothing on the page renders below
+    // 12px. Heading steps (lg and up) stay on the built ladder.
+    // =======================================================================
+    '--font-size-base': '1rem',
+    '--font-size-sm': '0.875rem',
+    '--font-size-xs': '0.75rem',
+
+    // =======================================================================
     // Radius — Graphite's exact set from SCALE, pinned on top of the base=2
     // ladder so --radius-inner is --radius-sm (2px), --radius-element is
     // --radius (4px), --radius-container is --radius-lg (6px). The page/chat
@@ -407,6 +421,10 @@ export const graphiteTheme = defineTheme({
       base: {
         fontFamily: 'var(--wb-font-mono)',
         letterSpacing: 'var(--wb-track-label)',
+        // Core locks Badge to a 20px box; the pinned type ramp needs the label
+        // to grow with its text or the glyphs clip.
+        height: 'auto',
+        minHeight: 'var(--spacing-5)',
       },
     },
 

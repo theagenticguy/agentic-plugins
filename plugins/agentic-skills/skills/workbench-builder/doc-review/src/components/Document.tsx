@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -40,6 +41,54 @@ const MARK_STYLE = {
 } as const;
 
 /**
+ * The reviewed document's own headings announce two levels below the workbench
+ * shell's outline (h1 page, h2 pane), so "Agent queue" and "Annotations" stay
+ * siblings of the document instead of reading as subsections of it. `aria-level`
+ * moves the announced level only: the tag keeps the visual weight the document
+ * asked for, which is what a reviewer needs to see.
+ */
+const HEADING_ARIA_LEVEL: Record<string, number> = { h1: 3, h2: 4, h3: 5 };
+
+/**
+ * Takes an element out of the visual layout while leaving it in the
+ * accessibility tree — the clip-rect technique, not `display: none`.
+ */
+const SR_ONLY: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
+/**
+ * A block tag only reaches the DOM when it is valid standing alone. The parser
+ * flattens tables to their cell text, so a cell renders as a paragraph rather
+ * than a <td> stranded outside any <table>.
+ */
+const STANDALONE_TAG: Record<string, string> = { td: "p", th: "p", caption: "p" };
+
+/**
+ * Groups a consecutive run of `li` blocks under one list. A bare <li> is invalid
+ * markup and costs a screen-reader user the list semantics — "list, 3 items" —
+ * that make an enumerated document navigable.
+ */
+function groupBlocks(blocks: Block[]): Array<{ isList: boolean; blocks: Block[] }> {
+  const groups: Array<{ isList: boolean; blocks: Block[] }> = [];
+  for (const block of blocks) {
+    const isList = block.tag === "li";
+    const tail = groups[groups.length - 1];
+    if (isList && tail?.isList === true) tail.blocks.push(block);
+    else groups.push({ isList, blocks: [block] });
+  }
+  return groups;
+}
+
+/**
  * Renders one block as alternating text/<mark> segments computed from its
  * open annotations. Because the block renders EXACTLY the server's stored
  * string, a selection's offsets — measured by walking the block's text nodes —
@@ -52,7 +101,7 @@ function BlockView({
 }: {
   readonly block: Block;
   readonly annotations: Annotation[];
-  readonly onSelect: (sel: { block_id: number; start: number; end: number; quote: string; x: number; y: number }) => void;
+  readonly onSelect: (sel: Draft) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
 
@@ -94,12 +143,19 @@ function BlockView({
       quote: block.text.slice(start, end),
       x: rect.left + rect.width / 2,
       y: rect.bottom,
+      yTop: rect.top,
     });
   }, [block, onSelect]);
 
-  const Tag = block.tag as keyof JSX.IntrinsicElements;
+  const tag = STANDALONE_TAG[block.tag] ?? block.tag;
+  const Tag = tag as keyof JSX.IntrinsicElements;
   return (
-    <Tag ref={ref as never} data-block={block.id} onMouseUp={handleMouseUp}>
+    <Tag
+      ref={ref as never}
+      data-block={block.id}
+      aria-level={HEADING_ARIA_LEVEL[tag]}
+      onMouseUp={handleMouseUp}
+    >
       {segments.map((seg, i) =>
         seg.ann ? (
           <mark
@@ -124,7 +180,19 @@ function BlockView({
   );
 }
 
-type Draft = { block_id: number; start: number; end: number; quote: string; x: number; y: number };
+/** A pending annotation plus the selection rect that positions the popover:
+ *  `x` is the selection's horizontal centre, `y` its bottom, `yTop` its top. */
+type Draft = {
+  block_id: number;
+  start: number;
+  end: number;
+  quote: string;
+  x: number;
+  y: number;
+  yTop: number;
+};
+
+const POPOVER_MARGIN = 8;
 
 /** The document pane: server-parsed blocks, selection → compose popover. */
 export function Document() {
@@ -133,15 +201,48 @@ export function Document() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [body, setBody] = useState("");
   const [kind, setKind] = useState<"comment" | "redline">("comment");
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [popover, setPopover] = useState<{ left: number; top: number } | null>(null);
+
+  /** Abandons the draft. Clearing the body too keeps a discarded note from
+   *  reappearing pre-filled under the next selection. */
+  const dismiss = useCallback(() => {
+    setDraft(null);
+    setBody("");
+  }, []);
 
   // Dismiss the compose popover on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDraft(null);
+      if (e.key === "Escape") dismiss();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [dismiss]);
+
+  // The popover is position:fixed, so a viewport edge CLIPS it — there is no
+  // scroll that brings it back. Measure the card once it has rendered and keep
+  // it inside the viewport on both axes, flipping above the selection when
+  // there is no room below. Its height tracks the body type ramp, so a
+  // selection in the lower third of the window puts Save out of reach without
+  // this. Until the measurement lands the card is laid out but not painted,
+  // which a layout effect keeps within a single frame.
+  useLayoutEffect(() => {
+    const el = popoverRef.current;
+    if (draft === null || el === null) {
+      setPopover(null);
+      return;
+    }
+    const { width, height } = el.getBoundingClientRect();
+    const maxLeft = Math.max(POPOVER_MARGIN, window.innerWidth - width - POPOVER_MARGIN);
+    const below = draft.y + POPOVER_MARGIN;
+    setPopover({
+      left: Math.min(Math.max(POPOVER_MARGIN, draft.x - width / 2), maxLeft),
+      top: below + height + POPOVER_MARGIN <= window.innerHeight
+        ? below
+        : Math.max(POPOVER_MARGIN, draft.yTop - height - POPOVER_MARGIN),
+    });
+  }, [draft]);
 
   const save = async () => {
     if (!draft || body.trim() === "") return;
@@ -153,8 +254,7 @@ export function Document() {
       kind,
       body: body.trim(),
     });
-    setDraft(null);
-    setBody("");
+    dismiss();
     window.getSelection()?.removeAllRanges();
   };
 
@@ -162,38 +262,74 @@ export function Document() {
   return (
     <div data-testid="document" style={{ position: "relative", minWidth: 0 }}>
       <VStack gap={2}>
-        {doc.blocks.map((b) => (
-          <BlockView key={b.id} block={b} annotations={annotations} onSelect={setDraft} />
-        ))}
+        {/* The pane's level-2 outline anchor. Hidden visually because the
+            document renders its own title one level below at full weight;
+            keeping it in the tree means a document that opens on any heading
+            level still nests under the page h1 with no skipped level. */}
+        <h2 style={SR_ONLY}>{doc.title}</h2>
+        {groupBlocks(doc.blocks).map((group) =>
+          group.isList ? (
+            // Margin zeroed and the marker gutter set explicitly: the VStack
+            // owns vertical rhythm, and the UA's 40px indent would push list
+            // text out of alignment with the surrounding paragraphs. The list
+            // style is restated because core's reset drops markers from every
+            // ul, and a reviewed document's bullets are content.
+            <ul
+              key={`list-${group.blocks[0].id}`}
+              style={{ margin: 0, paddingInlineStart: 24, listStyleType: "disc" }}
+            >
+              {group.blocks.map((b) => (
+                <BlockView key={b.id} block={b} annotations={annotations} onSelect={setDraft} />
+              ))}
+            </ul>
+          ) : (
+            <BlockView
+              key={group.blocks[0].id}
+              block={group.blocks[0]}
+              annotations={annotations}
+              onSelect={setDraft}
+            />
+          ),
+        )}
       </VStack>
       {draft && (
         <div
+          ref={popoverRef}
           data-testid="compose"
+          role="group"
+          aria-label={`Annotate “${draft.quote}”`}
           style={{
             position: "fixed",
-            left: Math.max(8, draft.x - 160),
-            top: draft.y + 8,
-            width: 320,
+            left: popover?.left ?? draft.x,
+            top: popover?.top ?? draft.y + POPOVER_MARGIN,
+            // Never wider than the viewport it is pinned inside.
+            width: `min(320px, calc(100vw - ${POPOVER_MARGIN * 2}px))`,
+            visibility: popover === null ? "hidden" : "visible",
             zIndex: 10,
           }}
         >
           <Card elevation="high">
             <VStack gap={1}>
+              {/* aria-pressed carries the choice programmatically: the two
+                  buttons distinguish selected from unselected by fill alone. */}
               <HStack gap={1}>
                 <Button
                   size="sm"
                   variant={kind === "comment" ? "primary" : "ghost"}
                   label="Comment"
+                  aria-pressed={kind === "comment"}
                   onClick={() => setKind("comment")}
                 />
                 <Button
                   size="sm"
                   variant={kind === "redline" ? "primary" : "ghost"}
                   label="Redline"
+                  aria-pressed={kind === "redline"}
                   onClick={() => setKind("redline")}
                 />
               </HStack>
               <TextArea
+          {...{ autoComplete: "off", "data-lpignore": "true" }}
                 label="Annotation"
                 isLabelHidden
                 placeholder={kind === "redline" ? "Proposed replacement…" : "Your note…"}
@@ -203,7 +339,7 @@ export function Document() {
               />
               <HStack gap={1}>
                 <Button size="sm" label="Save" onClick={save} />
-                <Button size="sm" variant="ghost" label="Cancel" onClick={() => setDraft(null)} />
+                <Button size="sm" variant="ghost" label="Cancel" onClick={dismiss} />
               </HStack>
             </VStack>
           </Card>

@@ -23,6 +23,20 @@
          however the links land. Layer names verified against the built CSS —
          `astryx theme build` emits exactly `reset` and `astryx-theme`. -->
     <style>@layer reset, astryx-base, astryx-theme;</style>
+    <!-- Baseline canvas. Astryx paints its own component surfaces and styles
+         nothing on `body`, so without this rule the space behind the cards is UA
+         white and any text outside a themed component inherits Times New Roman.
+         The selector must stay under `[data-astryx-theme="graphite"]`:
+         graphite.css declares its tokens on `:scope`, so `var(--color-*)` only
+         resolves inside that subtree. <html> carries the attribute, which makes
+         `body` a descendant that inherits the tokens. -->
+    <style>
+      [data-astryx-theme="graphite"] body {
+        background: var(--color-background-body);
+        font-family: var(--font-family-body);
+        color: var(--color-text-primary);
+      }
+    </style>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%230a6961'/></svg>" />
   </head>
   <body>

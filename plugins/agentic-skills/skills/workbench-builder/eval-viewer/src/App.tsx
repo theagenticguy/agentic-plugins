@@ -17,11 +17,13 @@ type Run = { id: number; label: string; passed: number; failed: number; duration
 function OutcomeDonut() {
   const s = useRegion<Summary>("summary");
   if (s === null || s.total === 0) return null;
+  const counts = { pass: s.pass ?? 0, fail: s.fail ?? 0, pending: s.pending ?? 0 };
   return (
     <Card data-testid="summary">
-      <Heading level={3}>Outcomes</Heading>
+      <Heading level={2}>Outcomes</Heading>
       <Chart
-        option={donutOption({ pass: s.pass ?? 0, fail: s.fail ?? 0, pending: s.pending ?? 0 })}
+        option={donutOption(counts)}
+        label={`Outcomes across ${s.total} evals: ${counts.pass} pass, ${counts.fail} fail, ${counts.pending} pending.`}
         height={200}
         testid="summary-chart"
       />
@@ -37,12 +39,15 @@ function RunHistory() {
     r.passed + r.failed === 0 ? 0 : Math.round((n / (r.passed + r.failed)) * 1000) / 10;
   return (
     <Card data-testid="run-history">
-      <Heading level={3}>Run history</Heading>
+      <Heading level={2}>Run history</Heading>
       <Chart
         option={stackedShareOption(labels, {
           passed: runs.map((r) => toPct(r.passed, r)),
           failed: runs.map((r) => toPct(r.failed, r)),
         })}
+        label={`Pass share per run: ${runs
+          .map((r) => `${r.label} ${toPct(r.passed, r)}%`)
+          .join(", ")}.`}
         height={200}
         testid="run-chart"
       />
@@ -53,7 +58,9 @@ function RunHistory() {
 export function App() {
   const sse = useSseStatus();
   return (
-    <VStack gap={3} padding={4}>
+    // One `main` landmark wraps the whole surface: a workbench page has no nav
+    // or sidebar, so every region a screen reader jumps to lives in here.
+    <VStack as="main" gap={3} padding={4}>
       <HStack gap={2} vAlign="center">
         <Heading level={1}>Eval viewer</Heading>
         <StatusDot
@@ -69,18 +76,23 @@ export function App() {
           only). minWidth:0 keeps wide markdown from blowing the layout open. */}
       <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 24, alignItems: "start" }}>
         <div style={{ minWidth: 0 }}>
-          <EvalBoard />
+          {/* Every column is a titled H2 section under the H1, so the outline
+              never jumps a level and the board is reachable by heading. */}
+          <VStack gap={2}>
+            <Heading level={2}>Evals</Heading>
+            <EvalBoard />
+          </VStack>
         </div>
         <div style={{ minWidth: 0 }}>
           <VStack gap={3}>
             <OutcomeDonut />
             <RunHistory />
             <Card>
-              <Heading level={3}>Ask the agent</Heading>
+              <Heading level={2}>Ask the agent</Heading>
               <Queue />
             </Card>
             <Card>
-              <Heading level={3}>Activity</Heading>
+              <Heading level={2}>Activity</Heading>
               <EventLog />
             </Card>
           </VStack>

@@ -5,6 +5,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
 import { Text } from "@astryxdesign/core/Text";
@@ -19,6 +20,7 @@ import {
 } from "../types";
 import { post, useRegion } from "../useRegion";
 import { Churn } from "./Churn";
+import { Path } from "./Path";
 
 /** Groups the self-join rows by path so the reader sees one line per contested
  *  file rather than the raw cross product. */
@@ -90,12 +92,15 @@ export function PrDetailDialog({
       purpose="form"
       width={760}
       maxHeight="86vh"
+      // The DialogHeader that names this dialog only exists once the region has
+      // resolved, so the loading frame needs its own name. Dropping the prop
+      // once `detail` lands hands naming back to the header title, which says
+      // which PR is open.
+      aria-label={detail === null ? "Pull request detail, loading" : undefined}
     >
       {detail === null ? (
         <VStack gap={2} padding={4}>
-          <Text size="sm" color="secondary">
-            loading PR…
-          </Text>
+          <Text type="supporting">loading PR…</Text>
         </VStack>
       ) : (
         <>
@@ -139,10 +144,11 @@ export function PrDetailDialog({
 
             {/* The markdown path: Astryx Markdown renders GFM tables, nested
                 lists, and highlighted fences as an element tree — no
-                innerHTML, no sanitizer. headingLevelStart={4} puts any `#` in
-                the summary under the dialog's own h-level. */}
+                innerHTML, no sanitizer. DialogHeader's title is an h2, so
+                headingLevelStart={3} continues the outline without skipping a
+                level. */}
             <div style={{ minWidth: 0 }} data-testid="pr-summary">
-              <Markdown headingLevelStart={4} density="compact" contentWidth="100%">
+              <Markdown headingLevelStart={3} density="compact" contentWidth="100%">
                 {detail.pr.summary}
               </Markdown>
             </div>
@@ -164,13 +170,9 @@ export function PrDetailDialog({
                         max={maxFile}
                         width={90}
                       />
-                      <Text type="code" size="xsm" wordBreak="break-all">
-                        {f.path}
-                      </Text>
+                      <Path>{f.path}</Path>
                       {f.kind !== "modified" && (
-                        <Text size="xsm" color="secondary">
-                          {f.kind}
-                        </Text>
+                        <Text type="supporting">{f.kind}</Text>
                       )}
                     </HStack>
                   );
@@ -181,38 +183,27 @@ export function PrDetailDialog({
             <Collapsible trigger={`Concerns (${detail.concerns.length})`} defaultIsOpen>
               <VStack gap={1.5} data-testid="pr-concerns" style={{ minWidth: 0 }}>
                 {detail.concerns.length === 0 && (
-                  <Text size="sm" color="secondary">
-                    No concerns recorded.
-                  </Text>
+                  <Text type="supporting">No concerns recorded.</Text>
                 )}
                 {detail.concerns.map((c) => (
                   <Card key={c.id} variant="muted" padding={2}>
                     <VStack gap={1}>
                       <HStack gap={2} vAlign="center" wrap="wrap">
                         <Badge variant={SEVERITY_BADGE[c.severity]} label={c.severity} />
-                        <Text
-                          size="sm"
-                          weight="semibold"
-                          hasStrikethrough={c.resolved === 1}
-                        >
+                        <Text weight="semibold" hasStrikethrough={c.resolved === 1}>
                           {c.title}
                         </Text>
                       </HStack>
-                      {c.path !== "" && (
-                        <Text type="code" size="xsm" color="secondary" wordBreak="break-all">
-                          {c.path}
-                        </Text>
-                      )}
-                      {c.body !== "" && (
-                        <Text size="xsm" color="secondary">
-                          {c.body}
-                        </Text>
-                      )}
+                      {c.path !== "" && <Path color="secondary">{c.path}</Path>}
+                      {c.body !== "" && <Text color="secondary">{c.body}</Text>}
                       <HStack gap={1}>
+                        {/* Every concern card offers the same two words, so the
+                            visible label cannot say which concern it toggles. */}
                         <Button
                           size="sm"
                           variant="ghost"
                           label={c.resolved === 1 ? "reopen" : "resolve"}
+                          aria-label={`${c.resolved === 1 ? "Reopen" : "Resolve"} concern: ${c.title}`}
                           onClick={() =>
                             post(`/api/concerns/${c.id}/resolved`, {
                               resolved: c.resolved !== 1,
@@ -235,15 +226,13 @@ export function PrDetailDialog({
             >
               <VStack gap={1} data-testid="pr-overlap" style={{ minWidth: 0 }}>
                 {detail.overlap.length === 0 && (
-                  <Text size="sm" color="secondary">
+                  <Text type="supporting">
                     No other PR in the set touches these files.
                   </Text>
                 )}
                 {groupOverlap(detail.overlap).map(({ path, others }) => (
                   <HStack key={path} gap={2} vAlign="center" wrap="wrap">
-                    <Text type="code" size="xsm" wordBreak="break-all">
-                      {path}
-                    </Text>
+                    <Path>{path}</Path>
                     {others.map((o) => (
                       <Badge
                         key={o.number}
@@ -259,34 +248,41 @@ export function PrDetailDialog({
             <Divider />
 
             <VStack gap={1}>
-              <Text weight="semibold" size="sm" as="div">
-                Ask about this PR
-              </Text>
+              {/* level={3} — DialogHeader's title is the h2 above it. */}
+              <Heading level={3}>Ask about this PR</Heading>
               <AskAboutPr prId={detail.pr.id} />
-              {detail.requests.map((r) => (
-                <Card key={r.id} variant="muted" padding={2}>
-                  <VStack gap={1}>
-                    <HStack gap={2} vAlign="center" wrap="wrap">
-                      <Badge
-                        variant={
-                          r.status === "answered"
-                            ? "success"
-                            : r.status === "working"
-                              ? "warning"
-                              : "neutral"
-                        }
-                        label={r.status}
-                      />
-                      <Text size="xsm">{r.body}</Text>
-                    </HStack>
-                    {r.response !== "" && (
-                      <Text size="xsm" color="secondary">
-                        {r.response}
-                      </Text>
-                    )}
-                  </VStack>
-                </Card>
-              ))}
+              {/* Same live channel as the global queue: the agent moves these
+                  rows through queued → working → answered while the dialog
+                  stays open. */}
+              <VStack
+                gap={1}
+                role="log"
+                aria-live="polite"
+                aria-label={`Agent requests about pull request #${detail.pr.number}`}
+              >
+                {detail.requests.map((r) => (
+                  <Card key={r.id} variant="muted" padding={2}>
+                    <VStack gap={1}>
+                      <HStack gap={2} vAlign="center" wrap="wrap">
+                        <Badge
+                          variant={
+                            r.status === "answered"
+                              ? "success"
+                              : r.status === "working"
+                                ? "warning"
+                                : "neutral"
+                          }
+                          label={r.status}
+                        />
+                        <Text>{r.body}</Text>
+                      </HStack>
+                      {r.response !== "" && (
+                        <Text color="secondary">{r.response}</Text>
+                      )}
+                    </VStack>
+                  </Card>
+                ))}
+              </VStack>
             </VStack>
           </VStack>
         </>

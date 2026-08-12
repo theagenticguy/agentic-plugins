@@ -11,14 +11,14 @@ const num = (v: number | null) =>
     ? "—"
     : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
-/** One label/value pair. Tabular numbers so the values align down the rail. */
+/** One label/value pair. Tabular numbers so the values align down the rail.
+ *  Both halves are body-size: the label names a real statistic and the value is
+ *  the statistic, neither is a caption on something else. */
 function Stat({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <HStack gap={2} hAlign="between" vAlign="center">
-      <Text type="supporting">{label}</Text>
-      <Text type="supporting" color="primary" hasTabularNumbers>
-        {value}
-      </Text>
+      <Text color="secondary">{label}</Text>
+      <Text hasTabularNumbers>{value}</Text>
     </HStack>
   );
 }

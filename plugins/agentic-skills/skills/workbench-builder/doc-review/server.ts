@@ -8,6 +8,11 @@
  * offsets are computed against the same text the server stored — byte-equal by
  * construction. Annotations are (block_id, start, end, quote).
  *
+ * Attribution contract: an annotation row records the note, not who moved it,
+ * so every mutation also appends one `events` row carrying the actor. Human
+ * routes live under /api, agent routes under /claude, and the wake-on-work
+ * digest reports only human events — the agent's own resolves never wake it.
+ *
  * Point at your own file with REVIEW_DOC=/path/to/doc.html.
  * Run: `bun --hot server.ts`
  */
@@ -98,7 +103,57 @@ db.exec(`
     created_at  TEXT NOT NULL,
     resolved_at TEXT
   );
+
+  -- The attributed activity log. A status flip reuses an annotation row, so the
+  -- annotations table cannot serve as the log: only an append-only id sequence
+  -- gives the agent's watermark something monotonic to walk.
+  CREATE TABLE IF NOT EXISTS events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind          TEXT NOT NULL,                 -- annotate | status
+    detail        TEXT NOT NULL DEFAULT '',
+    annotation_id INTEGER,
+    actor         TEXT NOT NULL DEFAULT 'human', -- human | agent
+    created_at    TEXT NOT NULL
+  );
+
+  -- The human→agent channel: queued → working (claimed by /claude/queue) →
+  -- answered (/claude/respond).
+  CREATE TABLE IF NOT EXISTS requests (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL DEFAULT 'question',
+    body        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'queued',  -- queued | working | answered
+    response    TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    answered_at TEXT
+  );
+
+  -- The agent's read cursor into events. Everything at or below last_event_id
+  -- is processed; the digest reports only what lies past it, so a wake-up never
+  -- re-processes a batch (exactly-once per event).
+  CREATE TABLE IF NOT EXISTS agent_watermark (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    last_event_id INTEGER NOT NULL DEFAULT 0
+  );
 `);
+
+// A session .db can predate a column (CREATE TABLE IF NOT EXISTS never alters).
+// Ensure additive columns exist so a --hot restart on an old file doesn't 500.
+function ensureColumn(table: string, column: string, ddl: string) {
+  const cols = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn("events", "actor", "actor TEXT NOT NULL DEFAULT 'human'");
+
+// First boot of the watermark starts at the current head of the log: history
+// before the watcher existed is already-handled work, not a pending batch.
+{
+  const wm = db.query("SELECT COUNT(*) AS n FROM agent_watermark").get() as { n: number };
+  if (wm.n === 0) {
+    const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM events").get() as { m: number };
+    db.query("INSERT INTO agent_watermark (id, last_event_id) VALUES (1, ?)").run(head.m);
+  }
+}
 
 const now = () => new Date().toISOString();
 
@@ -159,7 +214,51 @@ const regions: Record<string, (url: URL) => unknown> = {
       ? db.query("SELECT * FROM annotations WHERE status = ? ORDER BY id DESC").all(status)
       : db.query("SELECT * FROM annotations ORDER BY id DESC").all();
   },
+  queue: () => db.query("SELECT * FROM requests ORDER BY id DESC LIMIT 20").all(),
 };
+
+/** One event row per mutation, so the wake-on-work digest can attribute it. */
+function logEvent(kind: string, detail: string, annotationId: number, actor: "human" | "agent") {
+  db.query(
+    `INSERT INTO events (kind, detail, annotation_id, actor, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(kind, detail, annotationId, actor, now());
+}
+
+/**
+ * The single status-transition path. Both actors funnel through it — the browser
+ * reopen button and the terminal resolve — so the log entry and the UPDATE are
+ * one transaction and neither side can flip a status unattributed.
+ *
+ * Returns null on success, or the rejection plus the status code the route owes
+ * the caller: a bad status is the caller's fault (400), a missing annotation is
+ * a different failure it must be able to tell apart (404).
+ */
+function setStatus(
+  id: number,
+  status: string,
+  reply: string,
+  actor: "human" | "agent",
+): { error: string; status: 400 | 404 } | null {
+  if (!["open", "resolved", "wontfix"].includes(status)) {
+    return { error: "bad status", status: 400 };
+  }
+  const ann = db.query("SELECT block_id FROM annotations WHERE id = ?").get(id) as
+    | { block_id: number }
+    | null;
+  if (ann === null) return { error: "not found", status: 404 };
+  db.transaction(() => {
+    db.query("UPDATE annotations SET status = ?, reply = ?, resolved_at = ? WHERE id = ?").run(
+      status,
+      reply,
+      status === "open" ? null : now(),
+      id,
+    );
+    logEvent("status", `#${id} → ${status}`, id, actor);
+  })();
+  publish("annotations", `block-${ann.block_id}`);
+  return null;
+}
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -195,36 +294,134 @@ const server = Bun.serve({
         if (!block || block.text.slice(start, end) !== quote) {
           return Response.json({ error: "anchor mismatch" }, { status: 409 });
         }
-        const r = db
-          .query(
-            `INSERT INTO annotations (block_id, start, end, quote, kind, body, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(block_id, start, end, quote, kind, body, now());
+        let id = 0;
+        db.transaction(() => {
+          const r = db
+            .query(
+              `INSERT INTO annotations (block_id, start, end, quote, kind, body, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(block_id, start, end, quote, kind, body, now());
+          id = Number(r.lastInsertRowid);
+          logEvent("annotate", `${kind} on block ${block_id}: “${quote}”`, id, "human");
+        })();
         publish("annotations", `block-${block_id}`);
-        return Response.json({ ok: true, id: Number(r.lastInsertRowid) });
+        return Response.json({ ok: true, id });
       },
     },
 
-    // Agent (or human) transitions an annotation.
+    // Human transitions an annotation from the browser (the reopen override).
     "/api/annotations/:id/status": {
       POST: async (req) => {
-        const id = Number(req.params.id);
-        const { status, reply = "" } = (await req.json()) as {
-          status: "open" | "resolved" | "wontfix";
-          reply?: string;
-        };
-        if (!["open", "resolved", "wontfix"].includes(status)) {
-          return Response.json({ error: "bad status" }, { status: 400 });
+        const { status, reply = "" } = (await req.json()) as { status: string; reply?: string };
+        const err = setStatus(Number(req.params.id), status, reply, "human");
+        if (err !== null) return Response.json({ error: err.error }, { status: err.status });
+        return Response.json({ ok: true });
+      },
+    },
+
+    // Agent transitions an annotation from the terminal (scripts/review.ts) —
+    // same path, actor 'agent', so the resolve stays out of the next digest.
+    "/claude/annotations/:id/status": {
+      POST: async (req) => {
+        const { status, reply = "" } = (await req.json()) as { status: string; reply?: string };
+        const err = setStatus(Number(req.params.id), status, reply, "agent");
+        if (err !== null) return Response.json({ error: err.error }, { status: err.status });
+        return Response.json({ ok: true });
+      },
+    },
+
+    // Human → agent: ask a question, or hand over the batch, from the browser.
+    "/api/ask": {
+      POST: async (req) => {
+        const { body, kind = "question" } = (await req.json()) as { body: string; kind?: string };
+        if (typeof body !== "string" || body.trim() === "") {
+          return Response.json({ error: "body is required" }, { status: 400 });
         }
-        const ann = db.query("SELECT block_id FROM annotations WHERE id = ?").get(id) as
-          | { block_id: number }
-          | null;
-        if (!ann) return Response.json({ error: "not found" }, { status: 404 });
+        db.query("INSERT INTO requests (kind, body, created_at) VALUES (?, ?, ?)").run(
+          kind,
+          body.trim(),
+          now(),
+        );
+        publish("queue");
+        return Response.json({ ok: true });
+      },
+    },
+
+    // The agent's work order, read by scripts/wait-for-work.ts at wake-up: the
+    // human events past the watermark, the annotations still awaiting a reply,
+    // and any queued requests — the batch arrives already framed.
+    "/claude/digest": () => {
+      const { last_event_id } = db
+        .query("SELECT last_event_id FROM agent_watermark WHERE id = 1")
+        .get() as { last_event_id: number };
+      const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM events").get() as { m: number };
+      return Response.json({
+        watermark: last_event_id,
+        latest_event_id: head.m,
+        events: db
+          .query(
+            `SELECT e.id, e.kind, e.detail, e.annotation_id, e.created_at,
+                    a.block_id, a.quote, a.body, a.status, a.kind AS annotation_kind
+             FROM events e LEFT JOIN annotations a ON a.id = e.annotation_id
+             WHERE e.id > ? AND e.actor = 'human' ORDER BY e.id`,
+          )
+          .all(last_event_id),
+        open_annotations: db
+          .query("SELECT * FROM annotations WHERE status = 'open' ORDER BY id")
+          .all(),
+        queued_requests: db
+          .query("SELECT * FROM requests WHERE status = 'queued' ORDER BY id")
+          .all(),
+      });
+    },
+
+    // Agent advances its cursor after processing a batch. Skipping this makes
+    // the next wake-up replay the same events.
+    "/claude/watermark": {
+      POST: async (req) => {
+        const { last_event_id } = (await req.json()) as { last_event_id: number };
+        if (!Number.isFinite(Number(last_event_id))) {
+          return Response.json({ error: "last_event_id must be a number" }, { status: 400 });
+        }
+        db.query("UPDATE agent_watermark SET last_event_id = ? WHERE id = 1").run(
+          Number(last_event_id),
+        );
+        return Response.json({ ok: true });
+      },
+    },
+
+    // Agent pulls its work. Pulling IS claiming: queued → working, so the badge
+    // moves in the browser the moment the agent picks up.
+    "/claude/queue": () => {
+      const rows = db
+        .query("SELECT * FROM requests WHERE status = 'queued' ORDER BY id")
+        .all() as Array<{ id: number }>;
+      if (rows.length > 0) {
         db.query(
-          "UPDATE annotations SET status = ?, reply = ?, resolved_at = ? WHERE id = ?",
-        ).run(status, reply, status === "open" ? null : now(), id);
-        publish("annotations", `block-${ann.block_id}`);
+          `UPDATE requests SET status = 'working'
+           WHERE id IN (${rows.map((r) => r.id).join(",")})`,
+        ).run();
+        publish("queue");
+      }
+      return Response.json({ requests: rows });
+    },
+
+    "/claude/respond": {
+      POST: async (req) => {
+        const { request_id, response } = (await req.json()) as {
+          request_id: number;
+          response: string;
+        };
+        const r = db
+          .query(
+            "UPDATE requests SET status = 'answered', response = ?, answered_at = ? WHERE id = ?",
+          )
+          .run(response, now(), Number(request_id));
+        if (r.changes === 0) {
+          return Response.json({ error: `request ${request_id} not found` }, { status: 404 });
+        }
+        publish("queue");
         return Response.json({ ok: true });
       },
     },

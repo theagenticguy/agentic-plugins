@@ -21,8 +21,44 @@
          astryx-base wins and core's :root token defaults beat Graphite's :scope
          tokens even with the attribute set. This statement fixes the order
          however the links land. Layer names verified against the built CSS —
-         `astryx theme build` emits exactly `reset` and `astryx-theme`. -->
-    <style>@layer reset, astryx-base, astryx-theme;</style>
+         `astryx theme build` emits exactly `reset` and `astryx-theme`.
+
+         `wb-base` is first, so it is the weakest layer: the page-level defaults
+         below are a floor that every Astryx component rule overrides. -->
+    <style>@layer wb-base, reset, astryx-base, astryx-theme;</style>
+    <!-- Page-level defaults. The selector is descendant-of-the-themed-root, not
+         `body` alone, so `var(--color-*)` and `var(--font-*)` resolve against
+         Graphite's scoped token block instead of falling back to initial values.
+         Nothing in core or the theme styles <body>: without this rule the
+         canvas is the UA's white and body copy inherits Times New Roman. -->
+    <style>
+      @layer wb-base {
+        [data-astryx-theme="graphite"] body {
+          margin: 0;
+          background: var(--color-background-body);
+          font-family: var(--font-family-body);
+          color: var(--color-text-primary);
+        }
+
+        /* Focus floor. Anything the app makes focusable gets a visible ring even
+           when it is a bare element rather than an Astryx component; being in
+           the weakest layer, a component's own focus treatment still wins. */
+        #root :focus-visible {
+          outline: 2px solid var(--color-accent);
+          outline-offset: 2px;
+        }
+
+        /* Reviewed prose and the quotes taken from it carry unbreakable tokens —
+           URLs, hashes, identifiers — and a quote is reproduced verbatim.
+           overflow-wrap inherits, so naming the three panes is enough to keep a
+           long token wrapping inside its column instead of past the edge. */
+        #root [data-testid="document"],
+        #root [data-testid="annotations"],
+        #root [data-testid="queue-log"] {
+          overflow-wrap: anywhere;
+        }
+      }
+    </style>
     <!-- Per-workbench identity, one property. Graphite is the single theme across
          the catalog; `--wb-header-accent` is the only thing a workbench changes,
          and the theme's h1 rule reads it for the header rule.

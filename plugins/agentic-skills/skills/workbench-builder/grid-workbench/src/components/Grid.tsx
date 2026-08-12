@@ -8,6 +8,7 @@ import {
 import { Table, pixel, proportional } from "@astryxdesign/core/Table";
 import type { TableColumn } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { post, useRegion } from "../useRegion";
 import type { Decision, Row } from "../types";
 import { EditableCell } from "./EditableCell";
@@ -26,13 +27,16 @@ const money = (v: number | null) =>
   v === null ? "" : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** Per-row triage verdict. A radio group, not three buttons: one tab stop per
- *  row instead of three, and the selected state is announced. */
+ *  row instead of three, and the selected state is announced.
+ *
+ *  layout="hug" (the default) sizes each segment to its own label. `fill`
+ *  divides the column evenly, which gives the longest label ("pending") the same
+ *  box as the shortest ("fix") and wraps it mid-word. */
 function DecisionCell({ row }: { readonly row: Row }) {
   return (
     <SegmentedControl
       label={`Decision for ${row.name}`}
       size="sm"
-      layout="fill"
       value={row.decision}
       onChange={(next) => {
         void post(`/api/rows/${row.id}/decision`, { decision: next }).catch(() => {});
@@ -65,9 +69,9 @@ export function Grid() {
       width: pixel(44),
       align: "end",
       renderCell: (row) => (
-        <Text type="supporting" hasTabularNumbers>
-          {row.id}
-        </Text>
+        // Row identity is data the human reads back to the agent ("patch row 9"),
+        // so it stays at body size rather than the supporting caption ramp.
+        <Text hasTabularNumbers>{row.id}</Text>
       ),
     },
     {
@@ -81,7 +85,12 @@ export function Grid() {
     {
       key: "category",
       header: "Category",
-      width: proportional(1),
+      // The explicit minWidth is what lets the table fit its column without a
+      // horizontal scroll. Table derives its minimum from the *hungriest*
+      // proportional column: minWidth × totalProportion ÷ proportion. At the
+      // 120px default this 1-of-5 column alone demands 600px of proportional
+      // space and pushes the Decision segments out of view.
+      width: proportional(1, { minWidth: 96 }),
       renderCell: (row) => (
         <HStack gap={1} vAlign="center">
           <EditableCell rowId={row.id} column="category" value={row.category} />
@@ -92,15 +101,18 @@ export function Grid() {
     {
       key: "amount",
       header: "Amount",
-      width: pixel(140),
+      width: pixel(190),
       align: "end",
+      // The outlier badge stacks above the number instead of beside it. Sharing
+      // one row means the badge takes its width out of the cell and the value's
+      // maxLines={1} truncation eats the digits that justify the badge.
       renderCell: (row) => (
-        <HStack gap={1} vAlign="center" hAlign="end">
+        <VStack gap={0.5} hAlign="end">
           {row.amount !== null && row.amount > OUTLIER_AMOUNT && (
             <Badge variant="error" label="outlier" />
           )}
           <EditableCell rowId={row.id} column="amount" value={money(row.amount)} align="end" />
-        </HStack>
+        </VStack>
       ),
     },
     {
@@ -127,7 +139,8 @@ export function Grid() {
     {
       key: "decision",
       header: "Decision",
-      width: pixel(260),
+      // Wide enough for the four hug-sized segments at the theme's 14px sm ramp.
+      width: pixel(240),
       renderCell: (row) => <DecisionCell row={row} />,
     },
   ];
@@ -137,6 +150,8 @@ export function Grid() {
   return (
     <div data-testid="grid" style={{ minWidth: 0 }}>
       <Table<Row>
+        // Lands on the <table> element, which otherwise reaches AT unnamed.
+        aria-label="Expense rows — click a cell to edit it"
         data={rows ?? []}
         columns={columns}
         idKey="id"

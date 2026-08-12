@@ -36,6 +36,27 @@
          on the same element. Two workbenches open side-by-side are told apart by
          this one rule. -->
     <style>[data-astryx-theme="graphite"] { --wb-header-accent: #7a5512; }</style>
+    <!-- Page-level rules that no component owns.
+         `body` is styled by nobody: Astryx paints its own surfaces, so without
+         this the canvas behind the cards is UA white and any text outside a
+         themed component inherits Times New Roman. The selector must stay under
+         `[data-astryx-theme="graphite"]` — graphite.css declares its tokens on
+         `:scope`, and only inside that subtree does `var(--color-*)` resolve.
+         <html> carries the attribute, so `body` is a descendant and inherits.
+         `.cell-btn:focus-visible` lives here because a React inline style object
+         cannot express a pseudo-class, and the click-to-edit cell is a keyboard
+         target that must show where focus is. -->
+    <style>
+      [data-astryx-theme="graphite"] body {
+        background: var(--color-background-body);
+        font-family: var(--font-family-body);
+        color: var(--color-text-primary);
+      }
+      [data-astryx-theme="graphite"] .cell-btn:focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
+      }
+    </style>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%237a5512'/></svg>" />
   </head>
   <body>

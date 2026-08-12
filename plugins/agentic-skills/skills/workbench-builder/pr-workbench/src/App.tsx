@@ -27,7 +27,9 @@ export function App() {
   };
 
   return (
-    <VStack gap={3} padding={4}>
+    // as="main" rather than a wrapper <div>: the whole page is the review room,
+    // so the single landmark is the page shell itself.
+    <VStack as="main" gap={3} padding={4}>
       <HStack gap={2} vAlign="center" wrap="wrap">
         <Heading level={1}>PR review room</Heading>
         <StatusDot
@@ -35,9 +37,7 @@ export function App() {
           label={sse}
           isPulsing={sse === "live"}
         />
-        <Text size="sm" color="secondary">
-          disposable · 127.0.0.1 · this session only
-        </Text>
+        <Text type="supporting">disposable · 127.0.0.1 · this session only</Text>
       </HStack>
 
       <Overview />

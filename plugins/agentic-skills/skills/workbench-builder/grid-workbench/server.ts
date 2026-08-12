@@ -66,7 +66,27 @@ db.exec(`
     created_at  TEXT NOT NULL,
     answered_at TEXT
   );
+
+  -- The agent's read cursor into cells_log. Everything at or below last_log_id
+  -- has been processed; the digest reports only what lies past it, so a
+  -- wake-up never re-processes a batch (exactly-once per edit).
+  CREATE TABLE IF NOT EXISTS agent_watermark (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    last_log_id INTEGER NOT NULL DEFAULT 0
+  );
 `);
+
+// First boot of the watermark starts at the current head of the log: history
+// before the watcher existed is already-handled work, not a pending batch.
+{
+  const wm = db.query("SELECT COUNT(*) AS n FROM agent_watermark").get() as { n: number };
+  if (wm.n === 0) {
+    const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM cells_log").get() as {
+      m: number;
+    };
+    db.query("INSERT INTO agent_watermark (id, last_log_id) VALUES (1, ?)").run(head.m);
+  }
+}
 
 const now = () => new Date().toISOString();
 
@@ -287,8 +307,9 @@ const server = Bun.serve({
       },
     },
 
-    // Human triage verdict. Not a cell edit — it never enters cells_log, so the
-    // audit trail stays a record of DATA changes only.
+    // Human triage verdict. Logged to cells_log like any edit: the watcher's
+    // watermark walks that log, so an unlogged flip would be invisible to the
+    // wake-on-work digest.
     "/api/rows/:id/decision": {
       POST: async (req) => {
         const id = Number(req.params.id);
@@ -296,13 +317,24 @@ const server = Bun.serve({
         if (!DECISIONS.has(decision)) {
           return Response.json({ error: `unknown decision '${decision}'` }, { status: 400 });
         }
-        const r = db
-          .query("UPDATE rows SET decision = ?, updated_at = ? WHERE id = ?")
-          .run(decision, now(), id);
-        if (r.changes === 0) {
+        const row = db.query("SELECT decision FROM rows WHERE id = ?").get(id) as {
+          decision: string;
+        } | null;
+        if (row === null) {
           return Response.json({ error: `row ${id} not found` }, { status: 404 });
         }
-        publish("grid");
+        db.transaction(() => {
+          db.query("UPDATE rows SET decision = ?, updated_at = ? WHERE id = ?").run(
+            decision,
+            now(),
+            id,
+          );
+          db.query(
+            `INSERT INTO cells_log (row_id, column, old_value, new_value, actor, created_at)
+             VALUES (?, 'decision', ?, ?, 'human', ?)`,
+          ).run(id, row.decision, decision, now());
+        })();
+        publish("grid", "edit-log");
         return Response.json({ ok: true });
       },
     },
@@ -367,6 +399,52 @@ const server = Bun.serve({
         })();
         publish("grid", "column-stats", "edit-log");
         return Response.json({ ok: true, ids });
+      },
+    },
+
+    // The agent's work order: human edits past the watermark, the rows
+    // currently flagged `fix`, and any queued requests. The watcher prints
+    // this at wake-up so the agent starts with the batch already framed.
+    // Only HUMAN edits count toward "unprocessed" — the agent's own patches
+    // must not wake it.
+    "/claude/digest": () => {
+      const { last_log_id } = db
+        .query("SELECT last_log_id FROM agent_watermark WHERE id = 1")
+        .get() as { last_log_id: number };
+      const edits = db
+        .query(
+          `SELECT c.id, c.row_id, c.column, c.old_value, c.new_value, c.created_at,
+                  r.name AS row_name
+           FROM cells_log c LEFT JOIN rows r ON r.id = c.row_id
+           WHERE c.id > ? AND c.actor = 'human' ORDER BY c.id`,
+        )
+        .all(last_log_id);
+      const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM cells_log").get() as {
+        m: number;
+      };
+      return Response.json({
+        watermark: last_log_id,
+        latest_log_id: head.m,
+        edits,
+        fix_rows: db.query("SELECT * FROM rows WHERE decision = 'fix' ORDER BY id").all(),
+        queued_requests: db
+          .query("SELECT * FROM requests WHERE status = 'queued' ORDER BY id")
+          .all(),
+      });
+    },
+
+    // Agent advances its cursor after processing a batch. Skipping this makes
+    // the next wake-up replay the same edits.
+    "/claude/watermark": {
+      POST: async (req) => {
+        const { last_log_id } = (await req.json()) as { last_log_id: number };
+        if (!Number.isFinite(Number(last_log_id))) {
+          return Response.json({ error: "last_log_id must be a number" }, { status: 400 });
+        }
+        db.query("UPDATE agent_watermark SET last_log_id = ? WHERE id = 1").run(
+          Number(last_log_id),
+        );
+        return Response.json({ ok: true });
       },
     },
 

@@ -25,7 +25,7 @@ mermaid.initialize({
     lineColor: "#586471", // --ink-low, edges read as structure not data
     textColor: "#0b0f14", // --ink
     fontFamily: "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
-    fontSize: "13px", // Graphite --text-sm
+    fontSize: "14px", // Graphite --font-size-sm
   },
 });
 

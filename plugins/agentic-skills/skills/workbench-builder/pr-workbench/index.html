@@ -36,6 +36,32 @@
          on the same element. Two workbenches open side-by-side are told apart by
          this one rule. -->
     <style>[data-astryx-theme="graphite"] { --wb-header-accent: #2fb6a4; }</style>
+    <!-- Page canvas and default text. Astryx's reset zeroes the body margin but
+         declares no background, color, or family on it, so an unstyled node
+         lands on the UA's own dark canvas in Times at UA white — and a contrast
+         checker walking up from any text finds no opaque ancestor and assumes
+         #ffffff. Selector is `[data-astryx-theme="graphite"] body` rather than
+         plain `body`: graphite.css declares its tokens on `:scope` with <html>
+         as the scope root, so the vars only resolve on <html> and its
+         descendants. -->
+    <style>
+      [data-astryx-theme="graphite"] body {
+        background: var(--color-background-body);
+        font-family: var(--font-family-body);
+        color: var(--color-text-primary);
+      }
+    </style>
+    <!-- The collisions rail's PR chips are bare <button>s wrapping a Badge, so
+         they inherit no Astryx focus ring. `:focus-visible` keeps the ring off
+         mouse clicks; #2fb6a4 on the card ground measures 6.4:1, well past the
+         3:1 non-text minimum. -->
+    <style>
+      [data-astryx-theme="graphite"] [data-wb-chip]:focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
+        border-radius: var(--radius-full);
+      }
+    </style>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232fb6a4'/></svg>" />
   </head>
   <body>

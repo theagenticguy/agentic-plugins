@@ -142,7 +142,7 @@ The literals are TRANSCRIBED from Graphite, not eyeballed. Each name maps to a G
 | `LINE_STRONG`   | `--line-strong` (axis pointer)              | `#a9b4bf` / `#46545f` |
 | `SERIES`        | `GRAPHITE_SERIES` + `--ink-low` at overflow | see below             |
 | `STATUS_COLORS` | the `bridge.css` status ramp                | per status            |
-| `CHART_TEXT`    | `MONO_STACK` at 11px (`--text-2xs`)         | mode-invariant        |
+| `CHART_TEXT`    | `MONO_STACK` at a literal 12px              | mode-invariant        |
 
 `SERIES` is `GRAPHITE_SERIES` verbatim — teal `#0a6961`, navy `#274d7a`, plum `#6a3f76`, ochre `#9a5b16`, brick `#a3341f` — with `--ink-low` `#586471` as the overflow entry, so a sixth series recedes to grey instead of repeating a loud hue or inventing one. Graphite rations colour; the chart palette inherits that discipline.
 
@@ -151,7 +151,7 @@ Four adapter conventions travel with the palette, ported from Graphite's own ECh
 1. **`backgroundColor: "transparent"`** — the Graphite card surface shows through. A painted chart background would be a fourth surface tone.
 2. **Split lines are DASHED hairlines in `--line`**, and `axisTick` is off: a tick and a hairline say the same thing twice. A value axis also drops its baseline, because the split lines already carry the grid.
 3. **Tooltip on `--bg-1` with a `--line` border**, plus Graphite's `--shadow-lg` and 4px `--radius` through `extraCssText` — ECharts exposes an option for neither.
-4. **Legend swatches are `roundRect` at 11×11**, matching the 11px mono label, with `inactiveColor` on the hairline so a toggled-off series fades rather than disappears.
+4. **Legend swatches are `roundRect` sized to the label**, matching the 12px mono text, with `inactiveColor` on the hairline so a toggled-off series fades rather than disappears. Chart labels render into canvas where no CSS floor reaches them — 12px is the theme ramp's minimum, held by hand in `charts.ts`.
 
 A `STATUS_COLORS` key that no caller passes falls through to `SERIES[0]`, painting every slice one colour — so the keys and the call sites move together. eval-viewer keys on the outcome names the rows carry (`pending`/`pass`/`fail`) plus the run-history series names (`passed`/`failed`); triage-workbench maps its seven triage states onto the seven-hue status ramp.
 

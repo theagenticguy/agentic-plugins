@@ -23,6 +23,7 @@ Port note: 5060 and 5061 sit on Chrome's unsafe-port blocklist (`ERR_UNSAFE_PORT
 - Region endpoints: one query, every caller
 - One mutation path — browser and terminal share it
 - The two-way loop
+- Wake-on-work: the agent's ear
 - Per-item events for write bursts
 - Seed data doctrine
 - Security posture
@@ -188,6 +189,30 @@ The human→agent channel is the `requests` table (`queued → working → answe
 Trace one full round trip on paper before calling the loop closed: human clicks → row changes + SSE fires → terminal reads the change → terminal writes a response → SSE fires → browser shows it. If any leg is missing, you built a dashboard.
 
 Terminal helpers are plain TypeScript run with `bun run` — global `fetch`, no dependency declarations of any kind (`eval-viewer/scripts/record-result.ts`, `doc-review/scripts/review.ts`). One-line confirmation per action; throw on non-2xx.
+
+## Wake-on-work: the agent's ear
+
+The two-way loop above still has one manual step: the human must go tell the agent a batch is ready. Wake-on-work removes it. An LLM agent cannot be pushed to — it can only block on a wait — so the workbench ships a watcher script (`templates/wait-for-work.ts`) that IS that wait: the agent launches it as a background command (`run_in_background: true`), and the script's exit re-invokes the agent with a printed work-order digest.
+
+The watcher subscribes to the same `/events` SSE stream the browser uses and exits on either trigger:
+
+- **Request** (immediate): the human clicks "Hand batch to agent" — the queue `Button` POSTs `/api/ask` with `kind: 'process-edits'` — or types any question. Human intent skips the wait.
+- **Debounce** (edit-free buffer): any non-`queue` SSE event re-arms a quiet-period timer (`WATCH_DEBOUNCE_MS`, default 20s). When it fires with human events sitting past the watermark, the watcher exits. Mid-burst edits keep pushing the timer back, so the agent never grabs half-finished work.
+
+Three pieces make the loop sound:
+
+- **Actor attribution.** Every event row carries `actor: 'human' | 'agent'`. The digest reports only human events — the agent's own writes must never wake it, or the loop feeds back on itself.
+- **The watermark.** `agent_watermark` holds the agent's read cursor into the event log. `/claude/digest` returns only events past it; after processing a batch the agent POSTs `/claude/watermark` with the digest's `latest_event_id`. Skipping the advance replays the batch on the next wake-up; advancing it makes each batch exactly-once.
+- **Relaunch after every batch.** The agent processes the digest, advances the watermark, and relaunches the watcher. A watcher that isn't running is silent deafness, so the relaunch doubles as the loop's health check.
+
+The two endpoints join the canonical table:
+
+| Endpoint            | Method | Caller   | Body → Response                                           |
+| ------------------- | ------ | -------- | --------------------------------------------------------- |
+| `/claude/digest`    | GET    | terminal | → `{watermark, latest_event_id, events, queued_requests}` |
+| `/claude/watermark` | POST   | terminal | `{last_event_id}` → `{ok}`                                |
+
+The script only listens and reports; judgment about what a batch means — which edits matter, how to act on a flagged row — belongs to the agent it wakes. Keep deterministic fixes out of the watcher.
 
 ## Per-item events for write bursts
 

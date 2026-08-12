@@ -30,10 +30,10 @@ export function Churn({
 
   return (
     <HStack gap={1} vAlign="center">
-      <Text size="xsm" color="secondary" hasTabularNumbers>
+      <Text type="supporting" hasTabularNumbers>
         +{additions}
       </Text>
-      <Text size="xsm" color="secondary" hasTabularNumbers>
+      <Text type="supporting" hasTabularNumbers>
         −{deletions}
       </Text>
       {/* Theme tokens, not literals — this is a DOM element, not a canvas, so it

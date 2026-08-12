@@ -101,9 +101,27 @@ import { graphiteTheme } from "./theme/graphite";
 
 Default `mode` is `light`. `pr-workbench` runs `mode="dark"`: Graphite dark is a first-class mode with its own token pairs, verified in-browser.
 
+### The `body` baseline rule every `index.html` needs
+
+Astryx paints its own component surfaces and styles nothing on `body`. Without an explicit rule the canvas behind the cards is UA white and any text outside a themed component renders in Times New Roman, so every `index.html` carries:
+
+```html
+<style>
+  [data-astryx-theme="graphite"] body {
+    background: var(--color-background-body);
+    font-family: var(--font-family-body);
+    color: var(--color-text-primary);
+  }
+</style>
+```
+
+The selector must stay under `[data-astryx-theme="graphite"]` for the same reason the accent override does — `graphite.css` declares its tokens on `:scope`, so `var(--color-*)` resolves only inside that subtree. `<html>` carries the attribute, which makes `body` a descendant that inherits the tokens.
+
+The same block is the home for any page-level rule a component cannot own. `grid-workbench` puts `.cell-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }` here: the click-to-edit cell is a plain `<button>` styled with a React inline style object, and an inline style cannot express a pseudo-class.
+
 ### Per-workbench identity: one custom property
 
-Graphite publishes `--wb-header-accent`, which the theme's `h1` rule reads for a 3px header rule. That property is the ONLY thing a workbench changes:
+Graphite publishes `--wb-header-accent`, which the theme's `h1` rule reads for a 3px header rule. It is the only *token* a workbench overrides:
 
 ```html
 <style>[data-astryx-theme="graphite"] { --wb-header-accent: #274d7a; }</style>

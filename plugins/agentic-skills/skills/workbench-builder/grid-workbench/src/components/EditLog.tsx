@@ -25,20 +25,25 @@ export function EditLog() {
   }
 
   return (
-    <VStack gap={1} data-testid="edit-log">
+    // role="log" + aria-live="polite" is what makes an SSE repaint audible: the
+    // agent's patches land here without any user action, and an append-only feed
+    // announces just the new entries instead of re-reading the whole list.
+    <VStack gap={1} role="log" aria-live="polite" data-testid="edit-log">
       {(edits ?? []).map((e) => (
         <HStack key={e.id} gap={1} vAlign="center" wrap="wrap">
           <Badge variant={ACTOR_VARIANT[e.actor]} label={e.actor} />
-          <Text type="supporting" hasTabularNumbers>
+          {/* Timestamp, coordinates, and both values are the record itself, so
+              they stay at body size; colour alone carries the hierarchy. */}
+          <Text color="secondary" hasTabularNumbers>
             {e.created_at.slice(11, 19)}
           </Text>
-          <Text type="supporting">
+          <Text>
             #{e.row_id} · {e.column}
           </Text>
           <Text type="code" color="secondary" hasStrikethrough={e.old_value !== ""}>
             {e.old_value === "" ? "∅" : e.old_value}
           </Text>
-          <Text type="supporting">→</Text>
+          <Text color="secondary">→</Text>
           <Text type="code">{e.new_value === "" ? "∅" : e.new_value}</Text>
         </HStack>
       ))}

@@ -12,3 +12,11 @@ export type Annotation = {
   reply: string;
   created_at: string;
 };
+
+export type Request = {
+  id: number;
+  kind: string;
+  body: string;
+  status: "queued" | "working" | "answered";
+  response: string;
+};

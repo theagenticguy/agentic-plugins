@@ -2,8 +2,9 @@
  * Eval viewer — the reference workbench for judge/eval sessions.
  *
  * Board of eval cases with split ownership (human verdicts, agent results),
- * run history for the charts, an append-only event log, and the human→agent
- * request queue. Bun.serve + bun:sqlite + SSE invalidation. 127.0.0.1 only.
+ * run history for the charts, an actor-attributed append-only event log, and
+ * the human→agent request queue that wakes the watcher in scripts/wait-for-work.ts.
+ * Bun.serve + bun:sqlite + SSE invalidation. 127.0.0.1 only.
  * Run: `bun --hot server.ts`
  */
 import { Database } from "bun:sqlite";
@@ -53,6 +54,9 @@ db.exec(`
     kind       TEXT NOT NULL,
     detail     TEXT NOT NULL DEFAULT '',
     eval_id    INTEGER,
+    -- Who acted. The wake-on-work digest reports only human events, so the
+    -- agent's own results and runs never wake it.
+    actor      TEXT NOT NULL DEFAULT 'human', -- human | agent
     created_at TEXT NOT NULL
   );
 
@@ -66,9 +70,25 @@ db.exec(`
     created_at  TEXT NOT NULL,
     answered_at TEXT
   );
+
+  -- The agent's read cursor into events. Everything at or below last_event_id
+  -- is processed; /claude/digest reports only what lies past it, so a wake-up
+  -- never re-processes a batch (exactly-once per event).
+  CREATE TABLE IF NOT EXISTS agent_watermark (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    last_event_id INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 const now = () => new Date().toISOString();
+
+// A session .db can predate a column (CREATE TABLE IF NOT EXISTS never alters).
+// Ensure additive columns exist so a --hot restart on an old file doesn't 500.
+function ensureColumn(table: string, column: string, ddl: string) {
+  const cols = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn("events", "actor", "actor TEXT NOT NULL DEFAULT 'human'");
 
 // Seed like a session in progress: mixed outcomes, one flagged case with a
 // mermaid diagram in its note, and two prior runs so the charts draw.
@@ -113,11 +133,21 @@ if (empty.n === 0) {
   );
   run.run("baseline", 6, 4, 42.1, now());
   run.run("prompt-v2", 8, 2, 39.7, now());
-  db.query("INSERT INTO events (kind, detail, created_at) VALUES (?, ?, ?)").run(
+  db.query("INSERT INTO events (kind, detail, actor, created_at) VALUES (?, ?, 'agent', ?)").run(
     "ingest",
     "seeded 3 evals, 2 runs",
     now(),
   );
+}
+
+// First boot of the watermark starts at the current head of the event log:
+// history before the watcher existed is already-handled work, not a pending batch.
+{
+  const wm = db.query("SELECT COUNT(*) AS n FROM agent_watermark").get() as { n: number };
+  if (wm.n === 0) {
+    const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM events").get() as { m: number };
+    db.query("INSERT INTO agent_watermark (id, last_event_id) VALUES (1, ?)").run(head.m);
+  }
 }
 
 // --- SSE fan-out: invalidation signals only ---------------------------------
@@ -205,7 +235,9 @@ const server = Bun.serve({
       return Response.json(query(new URL(req.url)));
     },
 
-    // Human verdict from the browser.
+    // Human verdict from the browser. The event row it writes carries the
+    // default actor 'human', and the watcher's watermark walks that log — an
+    // unlogged verdict would be invisible to the wake-on-work digest.
     "/api/evals/:id/status": {
       POST: async (req) => {
         const id = Number(req.params.id);
@@ -257,7 +289,7 @@ const server = Bun.serve({
           id = Number(r.lastInsertRowid);
         }
         db.query(
-          "INSERT INTO events (kind, detail, eval_id, created_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO events (kind, detail, eval_id, actor, created_at) VALUES (?, ?, ?, 'agent', ?)",
         ).run("result", `${name}: ${outcome}`, id, now());
         publish("board", "summary", "event-log");
         return Response.json({ ok: true, id });
@@ -277,7 +309,7 @@ const server = Bun.serve({
           "INSERT INTO runs (label, passed, failed, duration_s, created_at) VALUES (?, ?, ?, ?, ?)",
         ).run(label, passed, failed, duration_s, now());
         db.query(
-          "INSERT INTO events (kind, detail, created_at) VALUES (?, ?, ?)",
+          "INSERT INTO events (kind, detail, actor, created_at) VALUES (?, ?, 'agent', ?)",
         ).run("run", `${label}: ${passed}/${passed + failed} passed`, now());
         publish("run-history", "event-log");
         return Response.json({ ok: true });
@@ -293,6 +325,49 @@ const server = Bun.serve({
           )
           .all(),
       ),
+
+    // The agent's work order, read by wait-for-work.ts at wake-up: human
+    // events past the watermark, the evals currently flagged, and any queued
+    // requests, so the agent starts with the batch already framed. Agent
+    // events are excluded — the agent's own writes must not wake it.
+    "/claude/digest": () => {
+      const { last_event_id } = db
+        .query("SELECT last_event_id FROM agent_watermark WHERE id = 1")
+        .get() as { last_event_id: number };
+      const head = db.query("SELECT COALESCE(MAX(id), 0) AS m FROM events").get() as {
+        m: number;
+      };
+      return Response.json({
+        watermark: last_event_id,
+        latest_event_id: head.m,
+        events: db
+          .query("SELECT * FROM events WHERE id > ? AND actor = 'human' ORDER BY id")
+          .all(last_event_id),
+        flagged_evals: db
+          .query(
+            "SELECT id, name, expected, actual, human_note FROM evals WHERE status = 'flagged' ORDER BY id",
+          )
+          .all(),
+        queued_requests: db
+          .query("SELECT * FROM requests WHERE status = 'queued' ORDER BY id")
+          .all(),
+      });
+    },
+
+    // Agent advances its cursor after processing a batch. Skipping this makes
+    // the next wake-up replay the same events.
+    "/claude/watermark": {
+      POST: async (req) => {
+        const { last_event_id } = (await req.json()) as { last_event_id: number };
+        if (!Number.isFinite(Number(last_event_id))) {
+          return Response.json({ error: "last_event_id must be a number" }, { status: 400 });
+        }
+        db.query("UPDATE agent_watermark SET last_event_id = ? WHERE id = 1").run(
+          Number(last_event_id),
+        );
+        return Response.json({ ok: true });
+      },
+    },
 
     "/api/ask": {
       POST: async (req) => {
@@ -333,7 +408,7 @@ const server = Bun.serve({
           "UPDATE requests SET status = 'answered', response = ?, answered_at = ? WHERE id = ?",
         ).run(response, now(), request_id);
         db.query(
-          "INSERT INTO events (kind, detail, created_at) VALUES (?, ?, ?)",
+          "INSERT INTO events (kind, detail, actor, created_at) VALUES (?, ?, 'agent', ?)",
         ).run("respond", `request #${request_id} answered`, now());
         publish("queue", "event-log");
         return Response.json({ ok: true });

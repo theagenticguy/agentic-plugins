@@ -47,21 +47,25 @@ Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/eval-viewer/` (
 
 ## 2. Document review / redline — BUILT
 
-Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/doc-review/` (`server.ts`, `src/`, `scripts/review.ts`, `sample-doc.html`). Port 5057, Graphite (`mode="light"`, header accent `#274d7a` navy). Point at a real file with `REVIEW_DOC=/path/to/doc.html bun --hot server.ts`; with no arg it serves the bundled sample.
+Source of truth: `${CLAUDE_PLUGIN_ROOT}/skills/workbench-builder/doc-review/` (`server.ts`, `src/`, `scripts/review.ts`, `scripts/wait-for-work.ts`, `sample-doc.html`). Port 5057, Graphite (`mode="light"`, header accent `#274d7a` navy). Point at a real file with `REVIEW_DOC=/path/to/doc.html bun --hot server.ts`; with no arg it serves the bundled sample.
 
 **Intent.** Review a document the way you would in Google Docs. Select a span of text; leave a comment, or a redline proposing a replacement. The agent reads the notes from the terminal, applies them to the source, and resolves each one — the card flips and the highlight clears, live.
 
-**Data model** (`doc-review/server.ts`). One table carries the whole loop:
+**Data model** (`doc-review/server.ts`). One prose-specialized table plus the standard loop tables:
 
-`annotations(id, block_id, start, end, quote, kind, body, status, reply, created_at, resolved_at)` — `kind` is `comment | redline`, `status` walks `open → resolved | wontfix`, `reply` is the agent's answer. The browser writes the note; the terminal writes the resolution. Split ownership, specialized for prose.
+- `annotations(id, block_id, start, end, quote, kind, body, status, reply, created_at, resolved_at)` — `kind` is `comment | redline`, `status` walks `open → resolved | wontfix`, `reply` is the agent's answer. The browser writes the note; the terminal writes the resolution. Split ownership, specialized for prose.
+- `events(id, kind, detail, annotation_id, actor, created_at)` — the attributed activity log. A status flip reuses an annotation row, so the annotations table can't be the log: only an append-only id sequence gives the watermark something monotonic to walk. Human routes live under `/api`, agent routes under `/claude`, and the actor comes from the route rather than the request body.
+- `requests(...)` + `agent_watermark(id, last_event_id)` — the standard human→agent channel and the wake-on-work cursor.
 
 The document is not a table: the server parses it once at boot into ordered blocks (h1/h2/h3/p/li/blockquote/td/th/caption), **normalizing each block's text** — entities decoded, whitespace collapsed (`parseBlocks`/`normalize` in `server.ts`).
 
 **Char-perfect anchoring.** A painted `<mark>` must cover exactly the characters the human selected. React makes this tractable: `BlockView` (`src/components/Document.tsx`) renders **exactly the server's stored string** as alternating text/mark segments, so the browser's `textContent` equals the stored text by construction — no template whitespace to trim, no entity mismatch. The selection handler walks the block's text nodes (TreeWalker) to convert the DOM range into character offsets into that same string. The server then **rejects drifted anchors with a 409**: an annotation is stored only if `block.text.slice(start, end) === quote`. Verify the way Phase 4 does: select a span crossing an entity (an em-dash), save, assert the painted `<mark>` equals the selection.
 
-**Layout.** Two columns — the document reads as a page on the left with annotations painted as colored `<mark>`s (amber comments, rose redlines); the annotation rail sits on the right, cards showing quote, note, status badge, and the agent's reply. Selecting text opens a fixed-position compose popover (Comment/Redline toggle + textarea).
+**Layout.** Two columns — the document reads as a page on the left with annotations painted as colored `<mark>`s (amber comments, rose redlines); the right rail carries the agent queue ("Hand batch to agent" + ask box) above the annotation cards, each showing quote, note, status badge, and the agent's reply. Selecting text opens a fixed-position compose popover (Comment/Redline toggle + textarea).
 
 **Terminal ingests.** `scripts/review.ts` — `list [status]`, `show <id>`, `resolve <id> "reply"`, `wontfix <id> "reply"`, `reopen <id>`, `json`. The work queue is the filtered region `GET /api/regions/annotations?status=open`. A session loops: the human leaves a batch, says "drain the review," the agent edits the source and resolves each note, and the page turns green card by card.
+
+**Wake-on-work.** `scripts/wait-for-work.ts` blocks on `/events` and exits with the `/claude/digest` work order — human events past the watermark plus `open_annotations`, the notes still awaiting a reply. "Hand batch to agent" exits it immediately; a lull after a burst of annotating exits it on the debounce.
 
 **Bending it.** The shape fits anything that is "anchor a human note to a span of a fixed artifact, then have the agent resolve it" — spec reviews, transcript labeling, log callouts. If the artifact is line-oriented (code, logs), anchor on `(block_id, line)` instead of char offsets and the normalization problem disappears entirely.
 

@@ -21,7 +21,7 @@ function Stat({
       <Text size="2xl" weight="bold" color={tone} hasTabularNumbers as="div">
         {value}
       </Text>
-      <Text size="xsm" color="secondary" as="div">
+      <Text type="supporting" as="div">
         {label}
       </Text>
     </VStack>
@@ -41,9 +41,7 @@ export function Overview() {
   return (
     <Card data-testid="overview" variant="muted">
       {o === null ? (
-        <Text size="sm" color="secondary">
-          loading…
-        </Text>
+        <Text type="supporting">loading…</Text>
       ) : (
         <HStack gap={6} vAlign="center" wrap="wrap">
           <Stat label="pull requests" value={String(o.n_prs)} />

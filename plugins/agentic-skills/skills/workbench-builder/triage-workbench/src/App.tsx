@@ -14,14 +14,25 @@ import { useSseStatus } from "./useRegion";
 export function App() {
   const sse = useSseStatus();
   return (
-    <VStack gap={3} padding={4}>
+    <VStack as="main" gap={3} padding={4}>
       <HStack gap={2} vAlign="center" wrap="wrap">
         <Heading level={1}>Triage</Heading>
-        <StatusDot
-          variant={sse === "live" ? "success" : "error"}
-          label={sse}
-          isPulsing={sse === "live"}
-        />
+        {/* The dot carries the colour, the word beside it carries the meaning —
+            a stream that has dropped must be legible without colour vision. The
+            visible word is aria-hidden so the dot's aria-label stays the single
+            announcement instead of doubling it. */}
+        <HStack gap={1} vAlign="center">
+          <StatusDot
+            variant={sse === "live" ? "success" : "error"}
+            label={`event stream ${sse}`}
+            isPulsing={sse === "live"}
+          />
+          <span aria-hidden="true">
+            <Text size="sm" color="secondary">
+              {sse}
+            </Text>
+          </span>
+        </HStack>
         <Text size="sm" color="secondary">
           email · slack · calendar · asana — only what still needs you
         </Text>
@@ -45,12 +56,14 @@ export function App() {
           <VStack gap={3}>
             <SourceSummary />
             <TodayRail />
+            {/* Every panel title is an h2: the page has one h1 and four sibling
+                sections, so the outline must not skip a rung. */}
             <Card>
-              <Heading level={3}>Ask the agent</Heading>
+              <Heading level={2}>Ask the agent</Heading>
               <Queue />
             </Card>
             <Card>
-              <Heading level={3}>Activity</Heading>
+              <Heading level={2}>Activity</Heading>
               <EventLog />
             </Card>
           </VStack>

@@ -8,6 +8,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Markdown } from "@astryxdesign/core/Markdown";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Mermaid } from "./Mermaid";
 import { post, useRegion } from "../useRegion";
@@ -72,20 +73,34 @@ function VerdictBar({ ev }: { readonly ev: Eval }) {
 }
 
 /** Detail mounts only while open: mermaid (and anything else that measures
- *  itself) must render into a visible box, not a collapsed 0-height one. */
+ *  itself) must render into a visible box, not a collapsed 0-height one.
+ *
+ *  Every row's trigger reads "detail", so the eval name rides along visually
+ *  hidden — a screen reader listing the page's buttons gets four distinct names
+ *  instead of four identical ones.
+ *
+ *  prompt / expected / actual / the human verdict are the eval record itself, so
+ *  they sit at body size; colour alone carries the label-vs-value distinction. */
 function Detail({ ev }: { readonly ev: Eval }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
-    <Collapsible trigger="detail" isOpen={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible
+      trigger={
+        <>
+          detail
+          <VisuallyHidden> for {ev.name}</VisuallyHidden>
+        </>
+      }
+      isOpen={isOpen}
+      onOpenChange={setIsOpen}
+    >
       {isOpen && (
         <VStack gap={1}>
-          <Text size="sm" color="secondary">prompt: {ev.prompt}</Text>
-          <Text size="sm" color="secondary">expected: {ev.expected}</Text>
-          <Text size="sm">actual: {ev.actual}</Text>
+          <Text color="secondary">prompt: {ev.prompt}</Text>
+          <Text color="secondary">expected: {ev.expected}</Text>
+          <Text>actual: {ev.actual}</Text>
           {ev.claude_note !== "" && <NoteBody note={ev.claude_note} />}
-          {ev.human_note !== "" && (
-            <Text size="sm" color="accent">you: {ev.human_note}</Text>
-          )}
+          {ev.human_note !== "" && <Text color="accent">you: {ev.human_note}</Text>}
           <VerdictBar ev={ev} />
         </VStack>
       )}

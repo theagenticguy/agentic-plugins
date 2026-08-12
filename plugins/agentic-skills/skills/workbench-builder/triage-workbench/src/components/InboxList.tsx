@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import {
   SegmentedControl,
@@ -27,7 +28,9 @@ const SOURCE_BADGE: Record<Source, "blue" | "purple" | "teal" | "orange"> = {
 };
 
 // Priority is the thing the eye should catch first, so it gets the StatusDot's
-// semantic ramp: urgent reads as error, low recedes to neutral.
+// semantic ramp: urgent reads as error, low recedes to neutral. The dot alone
+// would encode the whole signal in hue, so it always ships beside the word —
+// PRIORITY_LABEL is rendered, not just announced.
 const PRIORITY_DOT: Record<number, "error" | "warning" | "accent" | "neutral"> = {
   1: "error",
   2: "warning",
@@ -35,10 +38,10 @@ const PRIORITY_DOT: Record<number, "error" | "warning" | "accent" | "neutral"> =
   4: "neutral",
 };
 const PRIORITY_LABEL: Record<number, string> = {
-  1: "urgent",
-  2: "high",
-  3: "normal",
-  4: "low",
+  1: "P1 urgent",
+  2: "P2 high",
+  3: "P3 normal",
+  4: "P4 low",
 };
 
 const TRIAGE_BADGE: Record<string, "success" | "info" | "warning" | "neutral"> = {
@@ -86,12 +89,19 @@ function ItemCard({ item }: { readonly item: Item }) {
             label={item.source}
             data-testid={`source-badge-${item.source}`}
           />
-          <StatusDot
-            variant={PRIORITY_DOT[item.priority] ?? "neutral"}
-            label={PRIORITY_LABEL[item.priority] ?? "normal"}
-          />
+          <HStack gap={1} vAlign="center">
+            <StatusDot
+              variant={PRIORITY_DOT[item.priority] ?? "neutral"}
+              label={PRIORITY_LABEL[item.priority] ?? "P3 normal"}
+            />
+            {/* aria-hidden: the dot's aria-label already carries this string, so
+                exposing the visible copy too would announce the priority twice. */}
+            <span aria-hidden="true">
+              <Text color="secondary">{PRIORITY_LABEL[item.priority] ?? "P3 normal"}</Text>
+            </span>
+          </HStack>
           {item.due_at !== null && (
-            <Text size="sm" color="secondary" hasTabularNumbers>
+            <Text color="secondary" hasTabularNumbers>
               {dueChip(item.due_at)}
             </Text>
           )}
@@ -104,22 +114,17 @@ function ItemCard({ item }: { readonly item: Item }) {
           )}
         </HStack>
 
+        {/* Subject, sender, body and both notes are the item — the data a triage
+            decision is made from. They stay at body size; supporting size is for
+            captions, and nothing on this card is a caption. */}
         <Text weight="semibold">{item.title}</Text>
-        <Text size="sm" color="secondary">
+        <Text color="secondary">
           {item.sender}
           {item.kind !== "" ? ` · ${item.kind}` : ""}
         </Text>
-        {item.body !== "" && <Text size="sm">{item.body}</Text>}
-        {item.human_note !== "" && (
-          <Text size="sm" color="accent">
-            you: {item.human_note}
-          </Text>
-        )}
-        {item.agent_note !== "" && (
-          <Text size="sm" color="secondary">
-            agent: {item.agent_note}
-          </Text>
-        )}
+        {item.body !== "" && <Text>{item.body}</Text>}
+        {item.human_note !== "" && <Text color="accent">you: {item.human_note}</Text>}
+        {item.agent_note !== "" && <Text color="secondary">agent: {item.agent_note}</Text>}
 
         <HStack gap={1} wrap="wrap">
           {ACTIONS.map((a) => (
@@ -168,20 +173,31 @@ export function InboxList() {
   const [source, setSource] = useState("");
   const items = useRegion<Item[]>("inbox", source === "" ? undefined : { source });
 
+  const count = items?.length ?? 0;
+
   return (
     <VStack gap={2} data-testid="inbox">
-      <SegmentedControl
-        value={source}
-        onChange={setSource}
-        label="Work surface"
-        size="sm"
-      >
+      <Heading level={2}>Queue</Heading>
+      <SegmentedControl value={source} onChange={setSource} label="Work surface">
         <SegmentedControlItem value="" label="All" />
         <SegmentedControlItem value="email" label="Email" />
         <SegmentedControlItem value="slack" label="Slack" />
         <SegmentedControlItem value="calendar" label="Calendar" />
         <SegmentedControlItem value="asana" label="Asana" />
       </SegmentedControl>
+
+      {/* The queue rewrites itself under the reader on every SSE invalidation —
+          an agent ingest or a mark-handled can land mid-scroll. A live region
+          over the rows would replay the whole list on each change, so this one
+          carries the count and the active filter: one polite sentence per
+          change, enough to tell that the ground moved and by how much. */}
+      <div role="status" aria-live="polite" className="wb-sr-only">
+        {items === null
+          ? ""
+          : `${count} item${count === 1 ? "" : "s"} awaiting triage${
+            source === "" ? " across all surfaces" : ` on ${source}`
+          }`}
+      </div>
 
       {items !== null && items.length === 0 && (
         <EmptyState

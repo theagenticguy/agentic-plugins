@@ -1,11 +1,13 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { type Collision, parseChips, RISK_BADGE } from "../types";
 import { useRegion } from "../useRegion";
+import { Path } from "./Path";
 
 /**
  * The collisions rail — the reason this room exists.
@@ -28,10 +30,8 @@ export function Collisions({ onOpen }: { readonly onOpen: (number: number) => vo
     <Card data-testid="collisions" style={{ minWidth: 0 }}>
       <VStack gap={2}>
         <VStack gap={0.5}>
-          <Text weight="semibold" as="div">
-            Collisions
-          </Text>
-          <Text size="xsm" color="secondary" as="div">
+          <Heading level={2}>Collisions</Heading>
+          <Text type="supporting" as="div">
             files touched by more than one PR — merge-order risk
           </Text>
         </VStack>
@@ -47,14 +47,10 @@ export function Collisions({ onOpen }: { readonly onOpen: (number: number) => vo
             <VStack key={row.path} gap={1} data-testid="collision-row">
               <HStack gap={2} vAlign="center" wrap="wrap">
                 <Badge variant="orange" label={`${row.n} PRs`} />
-                {/* wordBreak:break-all — a long path must wrap inside the rail
-                    instead of forcing the whole column wider. */}
-                <Text type="code" size="sm" wordBreak="break-all">
-                  {row.path}
-                </Text>
+                <Path>{row.path}</Path>
               </HStack>
               <HStack gap={1} vAlign="center" wrap="wrap">
-                <Text size="xsm" color="secondary" hasTabularNumbers>
+                <Text type="supporting" hasTabularNumbers>
                   {row.churn} churn
                 </Text>
                 {parseChips(row.prs).map((chip) => (
@@ -62,6 +58,13 @@ export function Collisions({ onOpen }: { readonly onOpen: (number: number) => vo
                     key={chip.number}
                     type="button"
                     data-testid="collision-chip"
+                    // The Badge reads "#412 changes", which names a PR but not
+                    // what the chip does with it.
+                    aria-label={`Review detail for pull request #${chip.number}, ${chip.state}, ${chip.risk} risk, touching ${row.path}`}
+                    // data-wb-chip is the focus-ring hook: index.html paints the
+                    // themed :focus-visible outline these bare buttons inherit
+                    // from no Astryx control.
+                    data-wb-chip
                     onClick={() => onOpen(chip.number)}
                     // A bare button reset: the Badge carries all the visual
                     // weight, this only supplies the click target and focus

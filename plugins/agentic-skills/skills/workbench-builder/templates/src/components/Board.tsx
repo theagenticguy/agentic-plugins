@@ -49,17 +49,23 @@ export function Board() {
             {item.result !== "" && (
               <Text color="secondary">agent: {item.result}</Text>
             )}
+            {/* aria-label carries the row into the accessible name. Without it a
+                screen reader hears "Accept, button" once per item with nothing to
+                tell them apart. The visible word stays inside the name, which is
+                what WCAG 2.5.3 (Label in Name) requires. */}
             <HStack gap={1}>
               <Button
                 size="sm"
                 variant="secondary"
                 label="Accept"
+                aria-label={`Accept ${item.title}`}
                 onClick={() => post(`/api/items/${item.id}/status`, { status: "accepted" })}
               />
               <Button
                 size="sm"
                 variant="ghost"
                 label="Reject"
+                aria-label={`Reject ${item.title}`}
                 onClick={() => post(`/api/items/${item.id}/status`, { status: "rejected" })}
               />
             </HStack>

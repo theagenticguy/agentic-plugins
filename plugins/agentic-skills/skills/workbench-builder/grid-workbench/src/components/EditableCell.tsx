@@ -57,6 +57,7 @@ export function EditableCell({
   if (isEditing) {
     return (
       <TextInput
+          {...{ autoComplete: "off", "data-lpignore": "true" }}
         label={`${column} for row ${rowId}`}
         isLabelHidden
         size="sm"
@@ -76,6 +77,10 @@ export function EditableCell({
   return (
     <button
       type="button"
+      // The value alone reads as a static label ("Flight SEA→IAD, button"); the
+      // name has to carry both the action and the coordinates. index.html owns
+      // the matching :focus-visible ring, which an inline style cannot express.
+      aria-label={`Edit ${column} for row ${rowId}`}
       className="cell-btn"
       onClick={open}
       style={{

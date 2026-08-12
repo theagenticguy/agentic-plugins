@@ -23,7 +23,11 @@ const STATUS_BADGE: Record<Req["status"], "neutral" | "warning" | "success"> = {
 };
 
 /** Human→agent channel: ask inserts queued; the agent's pull claims (queued →
- *  working, the badge moves as it picks up); respond completes. */
+ *  working, the badge moves as it picks up); respond completes.
+ *
+ *  "Hand batch to agent" is the same channel with kind 'process-edits': the
+ *  wake-on-work watcher (scripts/wait-for-work.ts) exits on it immediately,
+ *  skipping the debounce wait. */
 export function Queue() {
   const requests = useRegion<Req[]>("queue");
   const [draft, setDraft] = useState("");
@@ -34,10 +38,16 @@ export function Queue() {
     setDraft("");
   };
 
+  const handBatch = async () => {
+    await post("/api/ask", { body: "Process my batched verdicts", kind: "process-edits" });
+  };
+
   return (
     <VStack gap={2} data-testid="queue">
+      <Button label="Hand batch to agent" clickAction={handBatch} data-testid="hand-to-agent" />
       <HStack gap={1} vAlign="end">
         <TextArea
+          {...{ autoComplete: "off", "data-lpignore": "true" }}
           label="Ask the agent"
           isLabelHidden
           placeholder="Ask the agent…"
@@ -50,15 +60,14 @@ export function Queue() {
       {(requests ?? []).map((r) => (
         <Card key={r.id}>
           <VStack gap={1}>
-            <HStack gap={2} vAlign="center">
+            {/* The question and the agent's answer are the payload of this card,
+                so both read at body size. vAlign="start" keeps the badge on the
+                first line when the question wraps. */}
+            <HStack gap={2} vAlign="start">
               <Badge variant={STATUS_BADGE[r.status]} label={r.status} />
-              <Text size="sm">{r.body}</Text>
+              <Text>{r.body}</Text>
             </HStack>
-            {r.response !== "" && (
-              <Text size="sm" color="secondary">
-                {r.response}
-              </Text>
-            )}
+            {r.response !== "" && <Text color="secondary">{r.response}</Text>}
           </VStack>
         </Card>
       ))}

@@ -27,6 +27,10 @@ const STATUS_BADGE: Record<Req["status"], "neutral" | "warning" | "success"> = {
  * flips it to working (pulling IS claiming — the badge moves the moment the
  * agent picks up); /claude/respond completes it. All three transitions arrive
  * as SSE repaints of this one region.
+ *
+ * "Hand batch to agent" is the same channel with kind 'process-edits': the
+ * wake-on-work watcher (templates/wait-for-work.ts) exits on it immediately,
+ * skipping the debounce wait.
  */
 export function Queue() {
   const requests = useRegion<Req[]>("queue");
@@ -38,10 +42,16 @@ export function Queue() {
     setDraft("");
   };
 
+  const handBatch = async () => {
+    await post("/api/ask", { body: "Process my batched edits", kind: "process-edits" });
+  };
+
   return (
     <VStack gap={2} data-testid="queue">
+      <Button label="Hand batch to agent" clickAction={handBatch} data-testid="hand-to-agent" />
       <HStack gap={1}>
         <TextArea
+          {...{ autoComplete: "off", "data-lpignore": "true" }}
           label="Ask the agent"
           isLabelHidden
           placeholder="Ask the agent…"
@@ -49,7 +59,7 @@ export function Queue() {
           value={draft}
           changeAction={(v) => setDraft(v)}
         />
-        <Button label="Ask" onClick={ask} />
+        <Button label="Ask" clickAction={ask} />
       </HStack>
       {(requests ?? []).map((r) => (
         <Card key={r.id}>
